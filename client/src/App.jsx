@@ -251,6 +251,46 @@ function SupplierDirectory() {
   )
 }
 
+function PurchaseOrders() {
+  const [query, setQuery] = useState('')
+  const purchases = []
+  const filteredPurchases = purchases.filter((purchase) =>
+    Object.values(purchase).some((value) => String(value).toLowerCase().includes(query.toLowerCase())),
+  )
+
+  return (
+    <div className="purchase-content">
+      <section className="purchase-panel">
+        <div className="purchase-heading">
+          <div>
+            <h2>Purchase orders</h2>
+            <p>Record incoming stock and supplier invoices.</p>
+          </div>
+          <button className="primary-button"><Icon name="box" size={19} /> New purchase</button>
+        </div>
+        <div className="purchase-toolbar">
+          <label className="catalog-search"><Icon name="search" size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search purchase orders..." aria-label="Search purchase orders" /></label>
+          <button className="catalog-button"><Icon name="filter" size={19} /> Filters</button>
+          <button className="catalog-button"><Icon name="download" size={18} /> Export</button>
+        </div>
+        <div className="purchase-table-wrap">
+          <table className="medicine-table purchase-table">
+            <thead><tr><th>Reference</th><th>Supplier</th><th>Date</th><th>Items</th><th>Amount</th><th>Status</th></tr></thead>
+            <tbody>{filteredPurchases.map((purchase) => <tr key={purchase.reference}>
+              <td><strong>{purchase.reference}</strong></td><td>{purchase.supplier}</td><td>{purchase.date}</td><td>{purchase.items}</td><td>{purchase.amount}</td><td>{purchase.status}</td>
+            </tr>)}</tbody>
+          </table>
+          {filteredPurchases.length === 0 && <div className="purchase-empty-space" aria-label="No purchase order records" />}
+        </div>
+        <div className="medicine-footer">
+          <span>Showing {filteredPurchases.length} of {purchases.length} records</span>
+          <div className="pagination"><button disabled>Previous</button><button className="current-page">1</button><button disabled>Next</button></div>
+        </div>
+      </section>
+    </div>
+  )
+}
+
 function App() {
   const [signedIn, setSignedIn] = useState(false)
   const [activePage, setActivePage] = useState('Dashboard')
@@ -280,7 +320,7 @@ function App() {
 
       <main className="dashboard-main">
         <header className="topbar">
-          <div className="page-title"><h1>{activePage === 'Medicines' ? 'Medicine &amp; Batch Management' : activePage === 'Inventory' ? 'Inventory & Stock' : activePage === 'Suppliers' ? 'Suppliers' : 'Dashboard'}</h1><span>{activePage === 'Medicines' || activePage === 'Inventory' || activePage === 'Suppliers' ? 'Thursday, 12 June 2025' : 'Today'}</span></div>
+          <div className="page-title"><h1>{activePage === 'Medicines' ? 'Medicine &amp; Batch Management' : activePage === 'Inventory' ? 'Inventory & Stock' : activePage === 'Suppliers' ? 'Suppliers' : activePage === 'Purchases' ? 'Purchases' : 'Dashboard'}</h1><span>{activePage === 'Medicines' || activePage === 'Inventory' || activePage === 'Suppliers' || activePage === 'Purchases' ? 'Thursday, 12 June 2025' : 'Today'}</span></div>
           <div className="topbar-actions">
             <label className="search-box"><Icon name="search" size={20} /><input placeholder="Search records..." aria-label="Search records" /></label>
             <button className="notification-button" aria-label="Notifications"><Icon name="bell" size={21} /><i /></button>
@@ -288,7 +328,7 @@ function App() {
           </div>
         </header>
 
-        {activePage === 'Medicines' ? <MedicineCatalog /> : activePage === 'Inventory' ? <InventoryStock /> : activePage === 'Suppliers' ? <SupplierDirectory /> : <div className="content">
+        {activePage === 'Medicines' ? <MedicineCatalog /> : activePage === 'Inventory' ? <InventoryStock /> : activePage === 'Suppliers' ? <SupplierDirectory /> : activePage === 'Purchases' ? <PurchaseOrders /> : <div className="content">
           <div className="welcome-row">
             <p>Here&apos;s what&apos;s happening today.</p>
             <div className="quick-actions"><button className="secondary-button"><Icon name="plus" size={18} /> New purchase</button><button className="primary-button"><Icon name="cart" size={19} /> Create sale</button></div>
