@@ -1,0 +1,668 @@
+﻿/* ==========================================================================
+   Login page
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. Variables & base
+   -------------------------------------------------------------------------- */
+:root {
+  --navy: #0c2141;
+  --ink: #142747;
+  --blue: #2864eb;
+  --muted: #8291aa;
+
+  --left-width: 56.5%;
+  --right-width: 43.5%;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+}
+
+/* --------------------------------------------------------------------------
+   2. Layout
+   The page now scrolls normally. Each panel's background lives on a
+   `position: fixed` pseudo-element, so it stays still while content scrolls.
+   -------------------------------------------------------------------------- */
+.login-container {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  min-height: 100vh;
+  background: var(--navy);
+  font-family: Inter, "Segoe UI", sans-serif;
+}
+
+/* --------------------------------------------------------------------------
+   3. Left panel
+   -------------------------------------------------------------------------- */
+.left-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: var(--left-width);
+  min-height: 100vh;
+  padding: 42px 6.2% 35px;
+  color: #fff;
+}
+
+/* Fixed background layer */
+.left-panel::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  width: 56.5vw;
+  height: 100vh;
+  background-color: var(--navy);
+  background-image:
+    linear-gradient(rgba(125, 165, 220, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(125, 165, 220, 0.08) 1px, transparent 1px),
+    radial-gradient(ellipse at 75% 100%, rgba(10, 148, 160, 0.2), transparent 48%);
+  background-size: 40px 40px, 40px 40px, auto;
+  pointer-events: none;
+}
+
+.left-panel footer {
+  margin-top: auto;
+  padding-top: 62px;
+  color: #6e819e;
+  font-size: 13px;
+  letter-spacing: 0.1px;
+}
+
+/* Brand */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 51px;
+  height: 51px;
+  border-radius: 14px;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 800;
+  background: linear-gradient(140deg, #3285ee, #10b6a9);
+}
+
+.brand-mark span {
+  margin-left: 1px;
+  font-size: 14px;
+}
+
+.brand-name {
+  font-size: 21px;
+  font-weight: 750;
+  line-height: 22px;
+  letter-spacing: -0.3px;
+}
+
+.brand-caption {
+  margin-top: 3px;
+  color: #8194b5;
+  font-size: 11px;
+  letter-spacing: 1.3px;
+}
+
+/* Status pill */
+.operational {
+  position: absolute;
+  top: 47px;
+  right: 7%;
+  padding: 10px 15px;
+  border: 1px solid rgba(128, 164, 217, 0.2);
+  border-radius: 24px;
+  color: #b2c4df;
+  font-size: 13px;
+  background: rgba(47, 73, 111, 0.35);
+}
+
+.operational span {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 9px;
+  border-radius: 50%;
+  background: #3dd4ab;
+  box-shadow: 0 0 0 5px rgba(61, 212, 171, 0.1);
+}
+
+/* Dashboard preview */
+.dashboard-content {
+  width: min(100%, 752px);
+  margin: auto 0 0;
+}
+
+.intelligence {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 14px;
+  border: 1px solid #214e89;
+  border-radius: 25px;
+  color: #83adff;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  background: rgba(24, 65, 121, 0.45);
+}
+
+.dashboard-content h1 {
+  margin: 24px 0 27px;
+  font-size: clamp(38px, 3.2vw, 52px);
+  line-height: 1.08;
+  letter-spacing: -2px;
+}
+
+/* Overview card */
+.overview-card {
+  padding: 21px 25px;
+  border: 1px solid rgba(125, 164, 218, 0.23);
+  border-radius: 29px;
+  background: rgba(49, 76, 117, 0.57);
+  box-shadow: 0 18px 40px rgba(2, 15, 35, 0.15);
+}
+
+.overview-heading {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 21px;
+}
+
+.overview-heading strong {
+  font-size: 18px;
+}
+
+.eyebrow {
+  margin-bottom: 6px;
+  color: #7b8faf;
+  font-size: 13px;
+}
+
+.window-dots {
+  display: flex;
+  gap: 7px;
+  padding-top: 16px;
+}
+
+.window-dots i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #6881a6;
+  opacity: 0.65;
+}
+
+/* Inventory cards */
+.inventory-cards {
+  display: flex;
+  gap: 15px;
+}
+
+.inventory-card {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  min-height: 135px;
+  padding: 15px 19px;
+  border-radius: 17px;
+  background: rgba(8, 28, 57, 0.74);
+}
+
+.inventory-card strong {
+  font-size: 29px;
+  line-height: 1;
+}
+
+.inventory-card span {
+  margin-top: 8px;
+  color: #7e90ae;
+  font-size: 13px;
+}
+
+.metric-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 14px;
+  border-radius: 14px;
+}
+
+.metric-icon.blue {
+  color: #6aa0ff;
+  background: rgba(38, 100, 211, 0.24);
+}
+
+.metric-icon.amber {
+  color: #f4ba48;
+  background: rgba(202, 142, 39, 0.25);
+}
+
+.metric-icon.teal {
+  color: #50d2c4;
+  background: rgba(0, 144, 145, 0.24);
+}
+
+/* Chart card */
+.chart-card {
+  position: relative;
+  height: 188px;
+  margin-top: 14px;
+  padding: 19px 20px 20px;
+  border-radius: 19px;
+  background: rgba(7, 28, 57, 0.78);
+}
+
+.chart-card > .icon {
+  position: absolute;
+  top: 31px;
+  right: 20px;
+  color: #5e9bff;
+}
+
+.chart-title {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #8091ae;
+  font-size: 13px;
+}
+
+.chart-title strong {
+  color: #f0f4fb;
+  font-size: 15px;
+}
+
+.chart-bars {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  left: 20px;
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  height: 110px;
+}
+
+.chart-bars i {
+  flex: 1;
+  min-height: 25px;
+  border-radius: 5px 5px 0 0;
+  background: linear-gradient(#4b83dc, #2859a6);
+}
+
+/* --------------------------------------------------------------------------
+   4. Right panel
+   -------------------------------------------------------------------------- */
+.right-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: var(--right-width);
+  min-height: 100vh;
+  padding: 38px 5.3% 25px;
+}
+
+/* Fixed background layer */
+.right-panel::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: -1;
+  width: 43.5vw;
+  height: 100vh;
+  background:
+    radial-gradient(circle at 100% 0, #eaf2ff 0, transparent 48%),
+    radial-gradient(circle at 0 100%, #e3f9f3 0, transparent 30%),
+    #f8faff;
+  pointer-events: none;
+}
+
+/* Login card */
+.login-card {
+  width: 100%;
+  max-width: 562px;
+  padding: 30px 47px 31px;
+  border-radius: 32px;
+  background: #fff;
+  box-shadow: 0 24px 60px rgba(30, 58, 100, 0.09);
+}
+
+.login-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 24px;
+  border-radius: 17px;
+  color: #2666ed;
+  background: #eef4ff;
+}
+
+.access-header {
+  margin-bottom: 15px;
+  color: var(--blue);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 2px;
+}
+
+.login-card h2 {
+  margin: 0 0 17px;
+  color: #122444;
+  font-size: 42px;
+  line-height: 1;
+  letter-spacing: -2px;
+}
+
+.form-subtitle {
+  margin: 0 0 29px;
+  color: #8391a9;
+  font-size: 16px;
+}
+
+/* --------------------------------------------------------------------------
+   5. Form
+   -------------------------------------------------------------------------- */
+.form-group {
+  margin-bottom: 18px;
+}
+
+.password-group {
+  margin-bottom: 17px;
+}
+
+.form-group label,
+.label-row label {
+  display: block;
+  margin-bottom: 8px;
+  color: #34435d;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.label-row a {
+  color: #2666ed;
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+/* Inputs */
+.input-wrapper {
+  position: relative;
+}
+
+.input-wrapper > .icon {
+  position: absolute;
+  top: 50%;
+  left: 18px;
+  color: #a5b5cc;
+  transform: translateY(-50%);
+}
+
+.input-wrapper input {
+  width: 100%;
+  height: 58px;
+  padding: 0 52px;
+  border: 1px solid #dfe5ee;
+  border-radius: 17px;
+  outline: none;
+  color: #253754;
+  font: inherit;
+  font-size: 16px;
+  background: #fff;
+  box-shadow: inset 0 1px 2px rgba(40, 64, 100, 0.02);
+}
+
+.input-wrapper input::placeholder {
+  color: #aab7ca;
+}
+
+.input-wrapper input:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(40, 100, 235, 0.1);
+}
+
+.show-password {
+  position: absolute;
+  top: 50%;
+  right: 17px;
+  padding: 4px;
+  border: 0;
+  color: #8ea0bb;
+  background: none;
+  transform: translateY(-50%);
+  cursor: pointer;
+}
+
+/* Checkbox */
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  color: #8190aa;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.checkbox-label input {
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border: 1px solid #d7e0ec;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.checkbox-label input:checked {
+  border-color: var(--blue);
+  background: var(--blue);
+  box-shadow: inset 0 0 0 5px #fff;
+}
+
+/* Submit button */
+.submit-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  height: 58px;
+  margin-top: 19px;
+  border: 0;
+  border-radius: 17px;
+  color: #fff;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 750;
+  background: var(--blue);
+  box-shadow: 0 10px 16px rgba(40, 100, 235, 0.2);
+  cursor: pointer;
+}
+
+.submit-button:hover {
+  background: #1e57d8;
+}
+
+/* --------------------------------------------------------------------------
+   6. Card footer
+   -------------------------------------------------------------------------- */
+.card-divider {
+  height: 1px;
+  margin: 25px 0 23px;
+  background: #e4e9f0;
+}
+
+.admin-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: #8491a8;
+  font-size: 15px;
+}
+
+.admin-link a {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: #2666ed;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.protected {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 17px;
+  color: #8495ad;
+  font-size: 14px;
+}
+
+.protected .icon {
+  color: #8a9db7;
+}
+
+/* --------------------------------------------------------------------------
+   7. Responsive
+   -------------------------------------------------------------------------- */
+@media (max-width: 1100px) {
+  .left-panel {
+    padding-right: 42px;
+    padding-left: 42px;
+  }
+
+  .right-panel {
+    padding-right: 28px;
+    padding-left: 28px;
+  }
+
+  .login-card {
+    padding-right: 34px;
+    padding-left: 34px;
+  }
+}
+
+@media (max-width: 780px) {
+  .login-container {
+    display: block;
+  }
+
+  .left-panel,
+  .right-panel {
+    width: 100%;
+    min-height: auto;
+  }
+
+  /* Panels are stacked, so each background scrolls with its own panel */
+  .left-panel::before,
+  .right-panel::before {
+    position: absolute;
+    inset: 0;
+    width: auto;
+    height: auto;
+  }
+
+  .left-panel {
+    padding: 32px 24px 42px;
+  }
+
+  .operational {
+    top: 32px;
+    right: 24px;
+    font-size: 11px;
+  }
+
+  .dashboard-content {
+    margin-top: 90px;
+  }
+
+  .dashboard-content h1 {
+    font-size: 42px;
+  }
+
+  .overview-card {
+    padding: 20px 16px;
+  }
+
+  .inventory-card {
+    min-height: 140px;
+    padding: 13px;
+  }
+
+  .inventory-card strong {
+    font-size: 23px;
+  }
+
+  .metric-icon {
+    margin-bottom: 14px;
+  }
+
+  .right-panel {
+    padding: 55px 18px;
+  }
+
+  .login-card {
+    padding: 34px 25px 39px;
+  }
+
+  .login-card h2 {
+    font-size: 39px;
+  }
+}
+
+@media (max-width: 480px) {
+  .operational {
+    position: static;
+    align-self: flex-start;
+    margin-top: 24px;
+  }
+
+  .dashboard-content {
+    margin-top: 36px;
+  }
+
+  .inventory-cards {
+    gap: 7px;
+  }
+
+  .inventory-card span {
+    font-size: 11px;
+  }
+
+  .inventory-card strong {
+    font-size: 20px;
+  }
+
+  .chart-card {
+    height: 190px;
+  }
+}

@@ -1,0 +1,245 @@
+import { useState } from 'react'
+import './App.css'
+import './Login.css'
+
+const navigation = [
+  ['dashboard', 'Dashboard'],
+  ['pill', 'Medicines'],
+  ['cube', 'Inventory'],
+  ['truck', 'Suppliers'],
+  ['box', 'Purchases'],
+  ['cart', 'Sales & Billing'],
+  ['users', 'Customers'],
+  ['bell', 'Alerts'],
+  ['report', 'Reports'],
+  ['history', 'Stock History'],
+  ['user', 'User Management'],
+]
+
+function Icon({ name, size = 21 }) {
+  const paths = {
+    dashboard: <><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><rect x="14" y="14" width="6" height="6" rx="1" /></>,
+    pill: <><path d="M8.5 15.5 15.5 8.5a4.24 4.24 0 0 0-6-6l-7 7a4.24 4.24 0 0 0 6 6Z" /><path d="m6 12 6-6" /><path d="m15.5 8.5 7 7a4.24 4.24 0 0 1-6 6l-7-7" /></>,
+    cube: <><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" /><path d="m4 7.5 8 4.5 8-4.5M12 12v9" /></>,
+    truck: <><path d="M3 6h11v11H3zM14 10h4l3 3v4h-7z" /><circle cx="7" cy="19" r="2" /><circle cx="18" cy="19" r="2" /></>,
+    box: <><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" /><path d="M4 7.5 12 12l8-4.5M12 12v9" /></>,
+    cart: <><path d="M3 4h2l2.2 11h10.9l2-8H6" /><circle cx="9" cy="19" r="1.5" /><circle cx="17" cy="19" r="1.5" /></>,
+    users: <><circle cx="9" cy="8" r="3" /><path d="M3 20c0-3.3 2.7-5 6-5s6 1.7 6 5M17 11a3 3 0 1 0 0-6M17 15c2.2 0 4 1.5 4 4" /></>,
+    bell: <><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 22h4" /></>,
+    report: <><path d="M5 3h10l4 4v14H5z" /><path d="M15 3v5h4M8 13h8M8 17h6" /></>,
+    history: <><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v6h6M12 7v5l3 2" /></>,
+    user: <><circle cx="12" cy="8" r="3" /><path d="M4 21c.7-4 3.3-6 8-6s7.3 2 8 6" /></>,
+    search: <><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4.5 4.5" /></>,
+    plus: <><path d="M12 5v14M5 12h14" /></>,
+    chevron: <path d="m8 10 4 4 4-4" />,
+    arrow: <><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></>,
+    close: <><path d="m6 6 12 12M18 6 6 18" /></>,
+    filter: <><path d="M4 6h16M7 12h10M10 18h4" /></>,
+    download: <><path d="M12 3v12M7 10l5 5 5-5M5 21h14" /></>,
+    lock: <><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /><path d="M12 14v2" /></>,
+    mail: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></>,
+    eye: <><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" /><circle cx="12" cy="12" r="2.5" /></>,
+    shield: <><path d="M12 3 19 6v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3Z" /><path d="m9 12 2 2 4-4" /></>,
+    spark: <><path d="m12 2 1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8L12 2Z" /><path d="m19 16 .7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7L19 16Z" /></>,
+    pills: <><circle cx="9" cy="9" r="4" /><circle cx="15" cy="15" r="4" /><path d="m6 12 6-6M12 18l6-6" /></>,
+    warning: <><path d="m12 4 9 16H3L12 4Z" /><path d="M12 9v5M12 17h.01" /></>,
+    pulse: <path d="M3 13h4l2-6 4 12 2-6h6" />,
+  }
+
+  return <svg className="icon" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>
+}
+
+function SignIn({ onSignIn }) {
+  const [showPassword, setShowPassword] = useState(false)
+  const [keepSignedIn, setKeepSignedIn] = useState(false)
+
+  return (
+    <main className="login-container">
+      <section className="left-panel">
+        <header className="brand">
+          <div className="brand-mark">M<span>+</span></div>
+          <div>
+            <div className="brand-name">MediCore</div>
+            <div className="brand-caption">PHARMACY SYSTEMS</div>
+          </div>
+        </header>
+        <div className="operational"><span /> Systems operational</div>
+        <div className="dashboard-content">
+          <div className="intelligence"><Icon name="spark" size={16} /> PHARMACY INTELLIGENCE</div>
+          <h1>Your pharmacy,<br />always in control.</h1>
+          <div className="overview-card">
+            <div className="overview-heading">
+              <div><div className="eyebrow">TODAY&apos;S OVERVIEW</div><strong>Inventory health</strong></div>
+              <div className="window-dots"><i /><i /><i /></div>
+            </div>
+            <div className="inventory-cards">
+              <div className="inventory-card"><div className="metric-icon blue"><Icon name="pills" size={22} /></div><strong>1,284</strong><span>Medicines</span></div>
+              <div className="inventory-card"><div className="metric-icon amber"><Icon name="warning" size={22} /></div><strong>18</strong><span>Low stock</span></div>
+              <div className="inventory-card"><div className="metric-icon teal"><Icon name="cube" size={22} /></div><strong>96%</strong><span>In stock</span></div>
+            </div>
+            <div className="chart-card">
+              <div className="chart-title"><span>Stock activity</span><strong>Last 7 days</strong></div>
+              <Icon name="pulse" size={29} />
+              <div className="chart-bars">{[38, 51, 43, 61, 54, 78, 68, 85, 58, 76, 64, 89].map((height, index) => <i key={index} style={{ height: `${height}%` }} />)}</div>
+            </div>
+          </div>
+        </div>
+        <footer>© 2025 MEDICORE PHARMACY SYSTEMS</footer>
+      </section>
+      <section className="right-panel">
+        <div className="login-card">
+          <div className="login-icon"><Icon name="lock" size={26} /></div>
+          <div className="access-header">STAFF ACCESS</div>
+          <h2>Welcome back</h2>
+          <p className="form-subtitle">Sign in to manage your pharmacy operations.</p>
+          <form onSubmit={(event) => { event.preventDefault(); onSignIn() }}>
+            <div className="form-group"><label htmlFor="email">Email address</label><div className="input-wrapper"><Icon name="mail" size={22} /><input type="email" id="email" placeholder="name@pharmacy.com" /></div></div>
+            <div className="form-group password-group"><div className="label-row"><label htmlFor="password">Password</label><a href="#forgot">Forgot password?</a></div><div className="input-wrapper"><Icon name="lock" size={22} /><input type={showPassword ? 'text' : 'password'} id="password" placeholder="Enter your password" /><button type="button" className="show-password" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'}><Icon name="eye" size={21} /></button></div></div>
+            <label className="checkbox-label"><input type="checkbox" checked={keepSignedIn} onChange={(event) => setKeepSignedIn(event.target.checked)} /><span>Keep me signed in on this device</span></label>
+            <button type="submit" className="submit-button">Sign in to MediCore <Icon name="arrow" size={21} /></button>
+          </form>
+          <div className="card-divider" />
+          <div className="admin-link"><span>Don&apos;t have access yet?</span><a href="#permission">Ask administrator for permission <Icon name="arrow" size={18} /></a></div>
+        </div>
+        <div className="protected"><Icon name="shield" size={18} /> Protected with secure, role-based access</div>
+      </section>
+    </main>
+  )
+}
+
+function MetricCard({ icon, label, tone }) {
+  return (
+    <article className="metric-card">
+      <div className={`metric-icon ${tone}`}><Icon name={icon} size={23} /></div>
+      <div className="metric-copy">
+        <span>{label}</span>
+        <div className="empty-value" />
+        <small><i />&nbsp;</small>
+      </div>
+    </article>
+  )
+}
+
+function EmptyRows({ type }) {
+  return (
+    <div className="empty-list">
+      <div className="empty-state-icon"><Icon name={type === 'sales' ? 'report' : 'cube'} size={24} /></div>
+      <strong>No records yet</strong>
+      <span>{type === 'sales' ? 'Sales will appear here once they are added.' : 'Inventory activity will appear here once it is added.'}</span>
+    </div>
+  )
+}
+
+const medicines = []
+
+function MedicineCatalog() {
+  const [query, setQuery] = useState('')
+  const filteredMedicines = medicines.filter((medicine) =>
+    Object.values(medicine).some((value) => String(value).toLowerCase().includes(query.toLowerCase())),
+  )
+
+  return (
+    <div className="medicine-content">
+      <section className="medicine-panel">
+        <div className="medicine-heading">
+          <div>
+            <h2>Medicine catalog</h2>
+            <p>Manage medicines, batches, pricing, and expiry details.</p>
+          </div>
+          <button className="primary-button"><Icon name="pill" size={19} /> Add medicine</button>
+        </div>
+        <div className="medicine-toolbar">
+          <label className="catalog-search"><Icon name="search" size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search medicine catalog..." aria-label="Search medicine catalog" /></label>
+          <button className="catalog-button"><Icon name="filter" size={19} /> Filters</button>
+          <button className="catalog-button"><Icon name="download" size={18} /> Export</button>
+        </div>
+        <div className="medicine-table-wrap">
+          <table className="medicine-table">
+            <thead><tr><th>Medicine</th><th>Generic</th><th>Category</th><th>Manufacturer</th><th>Batch</th><th>Stock</th><th>Expiry</th><th>Price</th></tr></thead>
+            <tbody>{filteredMedicines.map((medicine) => <tr key={medicine.batch}>
+              <td><strong>{medicine.name}</strong></td><td>{medicine.generic}</td><td>{medicine.category}</td><td>{medicine.manufacturer}</td><td>{medicine.batch}</td><td>{medicine.stock}</td><td>{medicine.expiry}</td><td>{medicine.price}</td>
+            </tr>)}</tbody>
+          </table>
+          {filteredMedicines.length === 0 && <div className="catalog-empty">No medicines match your search.</div>}
+        </div>
+        <div className="medicine-footer">
+          <span>Showing {filteredMedicines.length} of {medicines.length} records</span>
+          <div className="pagination"><button disabled>Previous</button><button className="current-page">1</button><button>Next</button></div>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function App() {
+  const [signedIn, setSignedIn] = useState(false)
+  const [activePage, setActivePage] = useState('Dashboard')
+
+  if (!signedIn) {
+    return <SignIn onSignIn={() => setSignedIn(true)} />
+  }
+
+  return (
+    <div className="dashboard-app">
+      <aside className="sidebar">
+        <div className="brand">
+          <div className="brand-mark">M<span>+</span></div>
+          <div><strong>MediCore</strong><small>PHARMACY SYSTEMS</small></div>
+        </div>
+
+        <nav className="navigation" aria-label="Main navigation">
+          {navigation.map(([icon, label]) => (
+            <a className={activePage === label ? 'nav-item active' : 'nav-item'} href={`#${label.toLowerCase().replaceAll(' ', '-')}`} onClick={(event) => { event.preventDefault(); setActivePage(label) }} key={label}>
+              <Icon name={icon} /><span>{label}</span>{label === 'Alerts' && <b className="alert-count">0</b>}
+            </a>
+          ))}
+        </nav>
+
+        <button className="sign-out" type="button" onClick={() => setSignedIn(false)}><Icon name="arrow" /><span>Sign out</span></button>
+      </aside>
+
+      <main className="dashboard-main">
+        <header className="topbar">
+          <div className="page-title"><h1>{activePage === 'Medicines' ? 'Medicine &amp; Batch Management' : 'Dashboard'}</h1><span>{activePage === 'Medicines' ? 'Thursday, 12 June 2025' : 'Today'}</span></div>
+          <div className="topbar-actions">
+            <label className="search-box"><Icon name="search" size={20} /><input placeholder="Search records..." aria-label="Search records" /></label>
+            <button className="notification-button" aria-label="Notifications"><Icon name="bell" size={21} /><i /></button>
+            <button className="profile-button"><span className="avatar">A</span><span className="profile-copy"><strong>Administrator</strong><small>Pharmacy account</small></span><Icon name="chevron" size={17} /></button>
+          </div>
+        </header>
+
+        {activePage === 'Medicines' ? <MedicineCatalog /> : <div className="content">
+          <div className="welcome-row">
+            <p>Here&apos;s what&apos;s happening today.</p>
+            <div className="quick-actions"><button className="secondary-button"><Icon name="plus" size={18} /> New purchase</button><button className="primary-button"><Icon name="cart" size={19} /> Create sale</button></div>
+          </div>
+
+          <section className="metrics-grid" aria-label="Pharmacy summary">
+            <MetricCard icon="pill" label="Total medicines" tone="blue" />
+            <MetricCard icon="cube" label="Available stock" tone="green" />
+            <MetricCard icon="report" label="Today&apos;s sales" tone="purple" />
+            <MetricCard icon="bell" label="Needs attention" tone="orange" />
+          </section>
+
+          <section className="primary-grid">
+            <article className="panel sales-panel">
+              <div className="panel-header"><div><h2>Sales overview</h2><p>Revenue performance over the last 7 days</p></div><a href="#sales-report">View report <Icon name="arrow" size={16} /></a></div>
+              <div className="empty-chart" aria-label="Sales chart awaiting data"><div className="chart-placeholder" /><span>No sales data yet</span></div>
+            </article>
+            <article className="panel alerts-panel">
+              <div className="panel-header"><div><h2>Inventory alerts</h2><p>Items requiring action</p></div><a href="#alerts">View all <Icon name="arrow" size={16} /></a></div>
+              <div className="alert-empty"><div className="empty-state-icon"><Icon name="bell" size={23} /></div><strong>No alerts yet</strong><span>Low-stock and expiry alerts will appear here.</span></div>
+            </article>
+          </section>
+
+          <section className="secondary-grid">
+            <article className="panel activity-panel"><div className="panel-header"><div><h2>Recent sales</h2><p>Latest invoices generated</p></div><a href="#sales">All sales <Icon name="arrow" size={16} /></a></div><EmptyRows type="sales" /></article>
+            <article className="panel activity-panel"><div className="panel-header"><div><h2>Recent stock activity</h2><p>Latest inventory movements</p></div><a href="#stock-history">View history <Icon name="arrow" size={16} /></a></div><EmptyRows type="stock" /></article>
+          </section>
+        </div>}
+      </main>
+    </div>
+  )
+}
+
+export default App
