@@ -171,6 +171,86 @@ function MedicineCatalog() {
   )
 }
 
+function InventoryStock() {
+  const [query, setQuery] = useState('')
+  const inventory = []
+  const filteredInventory = inventory.filter((item) =>
+    Object.values(item).some((value) => String(value).toLowerCase().includes(query.toLowerCase())),
+  )
+
+  return (
+    <div className="inventory-content">
+      <section className="inventory-panel">
+        <div className="inventory-heading">
+          <div>
+            <h2>Current inventory</h2>
+            <p>Track available quantities and stock by batch.</p>
+          </div>
+          <button className="primary-button"><Icon name="cube" size={19} /> Adjust stock</button>
+        </div>
+        <div className="inventory-toolbar">
+          <label className="catalog-search"><Icon name="search" size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search current inventory..." aria-label="Search current inventory" /></label>
+          <button className="catalog-button"><Icon name="filter" size={19} /> Filters</button>
+          <button className="catalog-button"><Icon name="download" size={18} /> Export</button>
+        </div>
+        <div className="inventory-table-wrap">
+          <table className="medicine-table inventory-table">
+            <thead><tr><th>Item</th><th>Batch</th><th>Available</th><th>Reserved</th><th>Minimum</th><th>Status</th><th>Location</th></tr></thead>
+            <tbody>{filteredInventory.map((item) => <tr key={item.batch}>
+              <td><strong>{item.name}</strong></td><td>{item.batch}</td><td>{item.available}</td><td>{item.reserved}</td><td>{item.minimum}</td><td>{item.status}</td><td>{item.location}</td>
+            </tr>)}</tbody>
+          </table>
+          {filteredInventory.length === 0 && <div className="inventory-empty-space" aria-label="No inventory records" />}
+        </div>
+        <div className="medicine-footer">
+          <span>Showing {filteredInventory.length} of {inventory.length} records</span>
+          <div className="pagination"><button disabled>Previous</button><button className="current-page">1</button><button disabled>Next</button></div>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function SupplierDirectory() {
+  const [query, setQuery] = useState('')
+  const suppliers = []
+  const filteredSuppliers = suppliers.filter((supplier) =>
+    Object.values(supplier).some((value) => String(value).toLowerCase().includes(query.toLowerCase())),
+  )
+
+  return (
+    <div className="supplier-content">
+      <section className="supplier-panel">
+        <div className="supplier-heading">
+          <div>
+            <h2>Supplier directory</h2>
+            <p>Manage supplier contacts, balances, and purchase history.</p>
+          </div>
+          <button className="primary-button"><Icon name="truck" size={19} /> Add supplier</button>
+        </div>
+        <div className="supplier-toolbar">
+          <label className="catalog-search"><Icon name="search" size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search supplier directory..." aria-label="Search supplier directory" /></label>
+          <button className="catalog-button"><Icon name="filter" size={19} /> Filters</button>
+          <button className="catalog-button"><Icon name="download" size={18} /> Export</button>
+        </div>
+        <div className="supplier-table-wrap">
+          <table className="medicine-table supplier-table">
+            <thead><tr><th>Supplier</th><th>Contact</th><th>Phone</th><th>Email</th><th>Purchases</th><th>Balance</th></tr></thead>
+            <tbody>{filteredSuppliers.map((supplier) => <tr key={supplier.name}>
+              <td><strong>{supplier.name}</strong></td><td>{supplier.contact}</td><td>{supplier.phone}</td><td>{supplier.email}</td><td>{supplier.purchases}</td><td>{supplier.balance}</td>
+            </tr>)}</tbody>
+          </table>
+          {filteredSuppliers.length === 0 && <div className="supplier-empty-space" aria-label="No supplier records" />}
+        </div>
+        <div className="medicine-footer">
+          <span>Showing {filteredSuppliers.length} of {suppliers.length} records</span>
+          <div className="pagination"><button disabled>Previous</button><button className="current-page">1</button><button disabled>Next</button></div>
+        </div>
+      </section>
+    </div>
+  )
+}
+
 function App() {
   const [signedIn, setSignedIn] = useState(false)
   const [activePage, setActivePage] = useState('Dashboard')
@@ -200,7 +280,7 @@ function App() {
 
       <main className="dashboard-main">
         <header className="topbar">
-          <div className="page-title"><h1>{activePage === 'Medicines' ? 'Medicine &amp; Batch Management' : 'Dashboard'}</h1><span>{activePage === 'Medicines' ? 'Thursday, 12 June 2025' : 'Today'}</span></div>
+          <div className="page-title"><h1>{activePage === 'Medicines' ? 'Medicine &amp; Batch Management' : activePage === 'Inventory' ? 'Inventory & Stock' : activePage === 'Suppliers' ? 'Suppliers' : 'Dashboard'}</h1><span>{activePage === 'Medicines' || activePage === 'Inventory' || activePage === 'Suppliers' ? 'Thursday, 12 June 2025' : 'Today'}</span></div>
           <div className="topbar-actions">
             <label className="search-box"><Icon name="search" size={20} /><input placeholder="Search records..." aria-label="Search records" /></label>
             <button className="notification-button" aria-label="Notifications"><Icon name="bell" size={21} /><i /></button>
@@ -208,7 +288,7 @@ function App() {
           </div>
         </header>
 
-        {activePage === 'Medicines' ? <MedicineCatalog /> : <div className="content">
+        {activePage === 'Medicines' ? <MedicineCatalog /> : activePage === 'Inventory' ? <InventoryStock /> : activePage === 'Suppliers' ? <SupplierDirectory /> : <div className="content">
           <div className="welcome-row">
             <p>Here&apos;s what&apos;s happening today.</p>
             <div className="quick-actions"><button className="secondary-button"><Icon name="plus" size={18} /> New purchase</button><button className="primary-button"><Icon name="cart" size={19} /> Create sale</button></div>

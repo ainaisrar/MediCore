@@ -107,12 +107,45 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .pagination button:disabled { color: #aab6c5; cursor: not-allowed; }
 .pagination .current-page { min-width: 35px; padding: 0; border-color: var(--blue); color: #fff; background: var(--blue); }
 
+.inventory-content { padding: 36px 35px 48px; }
+.inventory-panel { overflow: hidden; border: 1px solid #e3eaf3; border-radius: 18px; background: #fff; box-shadow: 0 2px 4px rgba(29, 61, 102, .035); }
+.inventory-heading { display: flex; align-items: center; justify-content: space-between; padding: 27px 23px 25px; border-bottom: 1px solid var(--line); }
+.inventory-heading h2 { margin: 0 0 9px; font-size: 19px; letter-spacing: -.3px; }
+.inventory-heading p { margin: 0; color: #788aa3; font-size: 15px; }
+.inventory-toolbar { display: flex; gap: 13px; padding: 18px; border-bottom: 1px solid var(--line); }
+.inventory-table th, .inventory-table td { padding-right: 23px; padding-left: 23px; }
+.inventory-table th:nth-child(1), .inventory-table td:nth-child(1) { width: 21%; }
+.inventory-table th:nth-child(2), .inventory-table td:nth-child(2) { width: 14%; }
+.inventory-table th:nth-child(3), .inventory-table td:nth-child(3),
+.inventory-table th:nth-child(4), .inventory-table td:nth-child(4),
+.inventory-table th:nth-child(5), .inventory-table td:nth-child(5) { width: 12%; }
+.inventory-table th:nth-child(6), .inventory-table td:nth-child(6) { width: 14%; }
+.inventory-table th:nth-child(7), .inventory-table td:nth-child(7) { width: 15%; }
+.inventory-empty-space { height: 300px; }
+
+.supplier-content { padding: 36px 35px 48px; }
+.supplier-panel { overflow: hidden; border: 1px solid #e3eaf3; border-radius: 18px; background: #fff; box-shadow: 0 2px 4px rgba(29, 61, 102, .035); }
+.supplier-heading { display: flex; align-items: center; justify-content: space-between; padding: 27px 23px 25px; border-bottom: 1px solid var(--line); }
+.supplier-heading h2 { margin: 0 0 9px; font-size: 19px; letter-spacing: -.3px; }
+.supplier-heading p { margin: 0; color: #788aa3; font-size: 15px; }
+.supplier-toolbar { display: flex; gap: 13px; padding: 18px; border-bottom: 1px solid var(--line); }
+.supplier-table th, .supplier-table td { padding-right: 23px; padding-left: 23px; }
+.supplier-table th:nth-child(1), .supplier-table td:nth-child(1) { width: 20%; }
+.supplier-table th:nth-child(2), .supplier-table td:nth-child(2) { width: 14%; }
+.supplier-table th:nth-child(3), .supplier-table td:nth-child(3) { width: 16%; }
+.supplier-table th:nth-child(4), .supplier-table td:nth-child(4) { width: 20%; }
+.supplier-table th:nth-child(5), .supplier-table td:nth-child(5) { width: 14%; }
+.supplier-table th:nth-child(6), .supplier-table td:nth-child(6) { width: 16%; }
+.supplier-empty-space { height: 180px; }
+
 @media (max-width: 1100px) {
   .sidebar { width: 240px; }
   .dashboard-main { width: calc(100% - 240px); margin-left: 240px; }
   .profile-copy { display: none; }
   .content { padding-right: 22px; padding-left: 22px; }
   .medicine-content { padding-right: 22px; padding-left: 22px; }
+  .inventory-content { padding-right: 22px; padding-left: 22px; }
+  .supplier-content { padding-right: 22px; padding-left: 22px; }
   .metrics-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 780px) {
@@ -125,6 +158,14 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .topbar-actions { width: 100%; }
   .search-box { flex: 1; }
   .content { padding: 24px 16px; }
+  .inventory-content { padding: 24px 16px; }
+  .supplier-content { padding: 24px 16px; }
+  .inventory-heading { align-items: flex-start; flex-direction: column; gap: 18px; }
+  .inventory-toolbar { flex-wrap: wrap; }
+  .inventory-toolbar .catalog-search { min-width: 100%; }
+  .supplier-heading { align-items: flex-start; flex-direction: column; gap: 18px; }
+  .supplier-toolbar { flex-wrap: wrap; }
+  .supplier-toolbar .catalog-search { min-width: 100%; }
   .welcome-row { align-items: flex-start; flex-direction: column; gap: 18px; }
   .primary-grid, .secondary-grid { grid-template-columns: 1fr; }
 }
