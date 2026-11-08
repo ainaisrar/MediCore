@@ -340,8 +340,9 @@ function StockHistory() {
   )
 }
 
-function Alerts() {
+function Alerts({ notificationsEnabled, onToggleNotifications, showSidebarCount, onToggleSidebarCount }) {
   const [query, setQuery] = useState('')
+  const [isConfigOpen, setIsConfigOpen] = useState(false)
   const alerts = []
   const filteredAlerts = alerts.filter((item) =>
     Object.values(item).some((value) => String(value).toLowerCase().includes(query.toLowerCase())),
@@ -355,7 +356,9 @@ function Alerts() {
             <h2>Inventory alerts</h2>
             <p>Active low-stock thresholds, expiry warnings, and critical notices.</p>
           </div>
-          <button className="primary-button"><Icon name="bell" size={19} /> Configure alerts</button>
+          <button className="primary-button" type="button" onClick={() => setIsConfigOpen(true)}>
+            <Icon name="bell" size={19} /> Configure alerts
+          </button>
         </div>
         <div className="alerts-toolbar">
           <label className="catalog-search"><Icon name="search" size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search inventory alerts..." aria-label="Search inventory alerts" /></label>
@@ -376,6 +379,53 @@ function Alerts() {
           <div className="pagination"><button disabled>Previous</button><button className="current-page">1</button><button disabled>Next</button></div>
         </div>
       </section>
+
+      {isConfigOpen && (
+        <div className="modal-backdrop" onClick={() => setIsConfigOpen(false)}>
+          <div className="modal-card" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="modal-title">
+            <div className="modal-header">
+              <div>
+                <h3 id="modal-title">Configure alerts</h3>
+                <p>Manage alert preferences and sidebar indicators</p>
+              </div>
+              <button className="modal-close" type="button" onClick={() => setIsConfigOpen(false)} aria-label="Close">
+                <Icon name="close" size={18} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <label className="toggle-row">
+                <div className="toggle-text">
+                  <strong>System notifications</strong>
+                  <span>Enable or disable inventory alerts and notices</span>
+                </div>
+                <input
+                  type="checkbox"
+                  className="toggle-switch"
+                  checked={notificationsEnabled}
+                  onChange={onToggleNotifications}
+                />
+              </label>
+              <label className="toggle-row">
+                <div className="toggle-text">
+                  <strong>Show sidebar notification count</strong>
+                  <span>Display alert number badge on the left side menu</span>
+                </div>
+                <input
+                  type="checkbox"
+                  className="toggle-switch"
+                  checked={showSidebarCount}
+                  onChange={onToggleSidebarCount}
+                />
+              </label>
+            </div>
+            <div className="modal-footer">
+              <button className="primary-button" type="button" onClick={() => setIsConfigOpen(false)}>
+                Save preferences
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -383,6 +433,8 @@ function Alerts() {
 function App() {
   const [signedIn, setSignedIn] = useState(false)
   const [activePage, setActivePage] = useState('Dashboard')
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true)
+  const [showSidebarCount, setShowSidebarCount] = useState(true)
 
   if (!signedIn) {
     return <SignIn onSignIn={() => setSignedIn(true)} />
@@ -399,7 +451,7 @@ function App() {
         <nav className="navigation" aria-label="Main navigation">
           {navigation.map(([icon, label]) => (
             <a className={activePage === label ? 'nav-item active' : 'nav-item'} href={`#${label.toLowerCase().replaceAll(' ', '-')}`} onClick={(event) => { event.preventDefault(); setActivePage(label) }} key={label}>
-              <Icon name={icon} /><span>{label}</span>{label === 'Alerts' && <b className="alert-count">0</b>}
+              <Icon name={icon} /><span>{label}</span>{label === 'Alerts' && showSidebarCount && <b className="alert-count">0</b>}
             </a>
           ))}
         </nav>
@@ -412,12 +464,12 @@ function App() {
           <div className="page-title"><h1>{activePage === 'Medicines' ? 'Medicine & Batch Management' : activePage === 'Inventory' ? 'Inventory & Stock' : activePage === 'Suppliers' ? 'Suppliers' : activePage === 'Purchases' ? 'Purchases' : activePage === 'Stock History' ? 'Stock Movement History' : activePage === 'Alerts' ? 'Inventory Alerts' : 'Dashboard'}</h1><span>{getDateRealTime()}</span></div>
           <div className="topbar-actions">
             <label className="search-box"><Icon name="search" size={20} /><input placeholder="Search records..." aria-label="Search records" /></label>
-            <button className="notification-button" type="button" onClick={() => setActivePage('Alerts')} aria-label="Notifications"><Icon name="bell" size={21} /><i /></button>
+            <button className="notification-button" type="button" onClick={() => setActivePage('Alerts')} aria-label="Notifications"><Icon name="bell" size={21} />{notificationsEnabled && <i />}</button>
             <button className="profile-button"><span className="avatar">A</span><span className="profile-copy"><strong>Administrator</strong><small>Pharmacy account</small></span><Icon name="chevron" size={17} /></button>
           </div>
         </header>
 
-        {activePage === 'Medicines' ? <MedicineCatalog /> : activePage === 'Inventory' ? <InventoryStock /> : activePage === 'Suppliers' ? <SupplierDirectory /> : activePage === 'Purchases' ? <PurchaseOrders /> : activePage === 'Stock History' ? <StockHistory /> : activePage === 'Alerts' ? <Alerts /> : <div className="content">
+        {activePage === 'Medicines' ? <MedicineCatalog /> : activePage === 'Inventory' ? <InventoryStock /> : activePage === 'Suppliers' ? <SupplierDirectory /> : activePage === 'Purchases' ? <PurchaseOrders /> : activePage === 'Stock History' ? <StockHistory /> : activePage === 'Alerts' ? <Alerts notificationsEnabled={notificationsEnabled} onToggleNotifications={() => setNotificationsEnabled((prev) => !prev)} showSidebarCount={showSidebarCount} onToggleSidebarCount={() => setShowSidebarCount((prev) => !prev)} /> : <div className="content">
           <div className="welcome-row">
             <p>Here&apos;s what&apos;s happening today.</p>
             <div className="quick-actions"><button className="secondary-button"><Icon name="plus" size={18} /> New purchase</button><button className="primary-button"><Icon name="cart" size={19} /> Create sale</button></div>
