@@ -202,6 +202,22 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .customer-table th:nth-child(7), .customer-table td:nth-child(7) { width: 12%; }
 .customer-empty-space { height: 180px; }
 
+.sales-content { padding: 36px 35px 48px; }
+.billing-panel { overflow: hidden; border: 1px solid #e3eaf3; border-radius: 18px; background: #fff; box-shadow: 0 2px 4px rgba(29, 61, 102, .035); }
+.billing-heading { display: flex; align-items: center; justify-content: space-between; padding: 27px 23px 25px; border-bottom: 1px solid var(--line); }
+.billing-heading h2 { margin: 0 0 9px; font-size: 19px; letter-spacing: -.3px; }
+.billing-heading p { margin: 0; color: #788aa3; font-size: 15px; }
+.billing-toolbar { display: flex; gap: 13px; padding: 18px; border-bottom: 1px solid var(--line); }
+.billing-table th, .billing-table td { padding-right: 23px; padding-left: 23px; }
+.billing-table th:nth-child(1), .billing-table td:nth-child(1) { width: 16%; }
+.billing-table th:nth-child(2), .billing-table td:nth-child(2) { width: 20%; }
+.billing-table th:nth-child(3), .billing-table td:nth-child(3) { width: 16%; }
+.billing-table th:nth-child(4), .billing-table td:nth-child(4) { width: 12%; }
+.billing-table th:nth-child(5), .billing-table td:nth-child(5) { width: 12%; }
+.billing-table th:nth-child(6), .billing-table td:nth-child(6) { width: 12%; }
+.billing-table th:nth-child(7), .billing-table td:nth-child(7) { width: 12%; }
+.billing-empty-space { height: 180px; }
+
 @media (max-width: 1100px) {
   .sidebar { width: 240px; }
   .dashboard-main { width: calc(100% - 240px); margin-left: 240px; }
@@ -214,6 +230,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .history-content { padding-right: 22px; padding-left: 22px; }
   .alerts-content { padding-right: 22px; padding-left: 22px; }
   .customer-content { padding-right: 22px; padding-left: 22px; }
+  .sales-content { padding-right: 22px; padding-left: 22px; }
   .metrics-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 780px) {
@@ -232,6 +249,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .history-content { padding: 24px 16px; }
   .alerts-content { padding: 24px 16px; }
   .customer-content { padding: 24px 16px; }
+  .sales-content { padding: 24px 16px; }
   .inventory-heading { align-items: flex-start; flex-direction: column; gap: 18px; }
   .inventory-toolbar { flex-wrap: wrap; }
   .inventory-toolbar .catalog-search { min-width: 100%; }
@@ -250,6 +268,9 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .customer-heading { align-items: flex-start; flex-direction: column; gap: 18px; }
   .customer-toolbar { flex-wrap: wrap; }
   .customer-toolbar .catalog-search { min-width: 100%; }
+  .billing-heading { align-items: flex-start; flex-direction: column; gap: 18px; }
+  .billing-toolbar { flex-wrap: wrap; }
+  .billing-toolbar .catalog-search { min-width: 100%; }
   .welcome-row { align-items: flex-start; flex-direction: column; gap: 18px; }
   .primary-grid, .secondary-grid { grid-template-columns: 1fr; }
 }

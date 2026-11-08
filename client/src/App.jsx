@@ -300,6 +300,46 @@ function PurchaseOrders() {
   )
 }
 
+function SalesBilling() {
+  const [query, setQuery] = useState('')
+  const sales = []
+  const filteredSales = sales.filter((sale) =>
+    Object.values(sale).some((value) => String(value).toLowerCase().includes(query.toLowerCase())),
+  )
+
+  return (
+    <div className="sales-content">
+      <section className="billing-panel">
+        <div className="billing-heading">
+          <div>
+            <h2>Sales &amp; billing</h2>
+            <p>Generate invoices, process counter sales, and track transactions.</p>
+          </div>
+          <button className="primary-button"><Icon name="cart" size={19} /> Create sale</button>
+        </div>
+        <div className="billing-toolbar">
+          <label className="catalog-search"><Icon name="search" size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search sales invoices..." aria-label="Search sales invoices" /></label>
+          <button className="catalog-button"><Icon name="filter" size={19} /> Filters</button>
+          <button className="catalog-button"><Icon name="download" size={18} /> Export</button>
+        </div>
+        <div className="sales-table-wrap">
+          <table className="medicine-table billing-table">
+            <thead><tr><th>Invoice</th><th>Customer</th><th>Date</th><th>Items</th><th>Payment</th><th>Total</th><th>Status</th></tr></thead>
+            <tbody>{filteredSales.map((sale) => <tr key={sale.id || sale.invoice}>
+              <td><strong>{sale.invoice}</strong></td><td>{sale.customer}</td><td>{sale.date}</td><td>{sale.items}</td><td>{sale.payment}</td><td>{sale.total}</td><td>{sale.status}</td>
+            </tr>)}</tbody>
+          </table>
+          {filteredSales.length === 0 && <div className="billing-empty-space" aria-label="No sales records" />}
+        </div>
+        <div className="medicine-footer">
+          <span>Showing {filteredSales.length} of {sales.length} records</span>
+          <div className="pagination"><button disabled>Previous</button><button className="current-page">1</button><button disabled>Next</button></div>
+        </div>
+      </section>
+    </div>
+  )
+}
+
 function CustomerDirectory() {
   const [query, setQuery] = useState('')
   const customers = []
@@ -501,7 +541,7 @@ function App() {
 
       <main className="dashboard-main">
         <header className="topbar">
-          <div className="page-title"><h1>{activePage === 'Medicines' ? 'Medicine & Batch Management' : activePage === 'Inventory' ? 'Inventory & Stock' : activePage === 'Suppliers' ? 'Suppliers' : activePage === 'Purchases' ? 'Purchases' : activePage === 'Customers' ? 'Customer Directory' : activePage === 'Stock History' ? 'Stock Movement History' : activePage === 'Alerts' ? 'Inventory Alerts' : 'Dashboard'}</h1><span>{getDateRealTime()}</span></div>
+          <div className="page-title"><h1>{activePage === 'Medicines' ? 'Medicine & Batch Management' : activePage === 'Inventory' ? 'Inventory & Stock' : activePage === 'Suppliers' ? 'Suppliers' : activePage === 'Purchases' ? 'Purchases' : activePage === 'Sales & Billing' ? 'Sales & Billing' : activePage === 'Customers' ? 'Customer Directory' : activePage === 'Stock History' ? 'Stock Movement History' : activePage === 'Alerts' ? 'Inventory Alerts' : 'Dashboard'}</h1><span>{getDateRealTime()}</span></div>
           <div className="topbar-actions">
             <label className="search-box"><Icon name="search" size={20} /><input placeholder="Search records..." aria-label="Search records" /></label>
             <button className="notification-button" type="button" onClick={() => setActivePage('Alerts')} aria-label="Notifications"><Icon name="bell" size={21} />{notificationsEnabled && <i />}</button>
@@ -509,7 +549,7 @@ function App() {
           </div>
         </header>
 
-        {activePage === 'Medicines' ? <MedicineCatalog /> : activePage === 'Inventory' ? <InventoryStock /> : activePage === 'Suppliers' ? <SupplierDirectory /> : activePage === 'Purchases' ? <PurchaseOrders /> : activePage === 'Customers' ? <CustomerDirectory /> : activePage === 'Stock History' ? <StockHistory /> : activePage === 'Alerts' ? <Alerts notificationsEnabled={notificationsEnabled} onToggleNotifications={() => setNotificationsEnabled((prev) => !prev)} showSidebarCount={showSidebarCount} onToggleSidebarCount={() => setShowSidebarCount((prev) => !prev)} /> : <div className="content">
+        {activePage === 'Medicines' ? <MedicineCatalog /> : activePage === 'Inventory' ? <InventoryStock /> : activePage === 'Suppliers' ? <SupplierDirectory /> : activePage === 'Purchases' ? <PurchaseOrders /> : activePage === 'Sales & Billing' ? <SalesBilling /> : activePage === 'Customers' ? <CustomerDirectory /> : activePage === 'Stock History' ? <StockHistory /> : activePage === 'Alerts' ? <Alerts notificationsEnabled={notificationsEnabled} onToggleNotifications={() => setNotificationsEnabled((prev) => !prev)} showSidebarCount={showSidebarCount} onToggleSidebarCount={() => setShowSidebarCount((prev) => !prev)} /> : <div className="content">
           <div className="welcome-row">
             <p>Here&apos;s what&apos;s happening today.</p>
             <div className="quick-actions"><button className="secondary-button"><Icon name="plus" size={18} /> New purchase</button><button className="primary-button"><Icon name="cart" size={19} /> Create sale</button></div>
@@ -534,7 +574,7 @@ function App() {
           </section>
 
           <section className="secondary-grid">
-            <article className="panel activity-panel"><div className="panel-header"><div><h2>Recent sales</h2><p>Latest invoices generated</p></div><a href="#sales">All sales <Icon name="arrow" size={16} /></a></div><EmptyRows type="sales" /></article>
+            <article className="panel activity-panel"><div className="panel-header"><div><h2>Recent sales</h2><p>Latest invoices generated</p></div><a href="#sales" onClick={(event) => { event.preventDefault(); setActivePage('Sales & Billing') }}>All sales <Icon name="arrow" size={16} /></a></div><EmptyRows type="sales" /></article>
             <article className="panel activity-panel"><div className="panel-header"><div><h2>Recent stock activity</h2><p>Latest inventory movements</p></div><a href="#stock-history">View history <Icon name="arrow" size={16} /></a></div><EmptyRows type="stock" /></article>
           </section>
         </div>}
