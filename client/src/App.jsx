@@ -300,6 +300,46 @@ function PurchaseOrders() {
   )
 }
 
+function CustomerDirectory() {
+  const [query, setQuery] = useState('')
+  const customers = []
+  const filteredCustomers = customers.filter((customer) =>
+    Object.values(customer).some((value) => String(value).toLowerCase().includes(query.toLowerCase())),
+  )
+
+  return (
+    <div className="customer-content">
+      <section className="customer-panel">
+        <div className="customer-heading">
+          <div>
+            <h2>Customer directory</h2>
+            <p>Manage customer profiles, contact details, and prescription history.</p>
+          </div>
+          <button className="primary-button"><Icon name="users" size={19} /> Add customer</button>
+        </div>
+        <div className="customer-toolbar">
+          <label className="catalog-search"><Icon name="search" size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search customer directory..." aria-label="Search customer directory" /></label>
+          <button className="catalog-button"><Icon name="filter" size={19} /> Filters</button>
+          <button className="catalog-button"><Icon name="download" size={18} /> Export</button>
+        </div>
+        <div className="customer-table-wrap">
+          <table className="medicine-table customer-table">
+            <thead><tr><th>Customer</th><th>Phone</th><th>Email</th><th>Prescriptions</th><th>Total Orders</th><th>Balance</th><th>Status</th></tr></thead>
+            <tbody>{filteredCustomers.map((customer) => <tr key={customer.id || customer.phone || customer.name}>
+              <td><strong>{customer.name}</strong></td><td>{customer.phone}</td><td>{customer.email}</td><td>{customer.prescriptions}</td><td>{customer.orders}</td><td>{customer.balance}</td><td>{customer.status}</td>
+            </tr>)}</tbody>
+          </table>
+          {filteredCustomers.length === 0 && <div className="customer-empty-space" aria-label="No customer records" />}
+        </div>
+        <div className="medicine-footer">
+          <span>Showing {filteredCustomers.length} of {customers.length} records</span>
+          <div className="pagination"><button disabled>Previous</button><button className="current-page">1</button><button disabled>Next</button></div>
+        </div>
+      </section>
+    </div>
+  )
+}
+
 function StockHistory() {
   const [query, setQuery] = useState('')
   const stockHistory = []
@@ -461,7 +501,7 @@ function App() {
 
       <main className="dashboard-main">
         <header className="topbar">
-          <div className="page-title"><h1>{activePage === 'Medicines' ? 'Medicine & Batch Management' : activePage === 'Inventory' ? 'Inventory & Stock' : activePage === 'Suppliers' ? 'Suppliers' : activePage === 'Purchases' ? 'Purchases' : activePage === 'Stock History' ? 'Stock Movement History' : activePage === 'Alerts' ? 'Inventory Alerts' : 'Dashboard'}</h1><span>{getDateRealTime()}</span></div>
+          <div className="page-title"><h1>{activePage === 'Medicines' ? 'Medicine & Batch Management' : activePage === 'Inventory' ? 'Inventory & Stock' : activePage === 'Suppliers' ? 'Suppliers' : activePage === 'Purchases' ? 'Purchases' : activePage === 'Customers' ? 'Customer Directory' : activePage === 'Stock History' ? 'Stock Movement History' : activePage === 'Alerts' ? 'Inventory Alerts' : 'Dashboard'}</h1><span>{getDateRealTime()}</span></div>
           <div className="topbar-actions">
             <label className="search-box"><Icon name="search" size={20} /><input placeholder="Search records..." aria-label="Search records" /></label>
             <button className="notification-button" type="button" onClick={() => setActivePage('Alerts')} aria-label="Notifications"><Icon name="bell" size={21} />{notificationsEnabled && <i />}</button>
@@ -469,7 +509,7 @@ function App() {
           </div>
         </header>
 
-        {activePage === 'Medicines' ? <MedicineCatalog /> : activePage === 'Inventory' ? <InventoryStock /> : activePage === 'Suppliers' ? <SupplierDirectory /> : activePage === 'Purchases' ? <PurchaseOrders /> : activePage === 'Stock History' ? <StockHistory /> : activePage === 'Alerts' ? <Alerts notificationsEnabled={notificationsEnabled} onToggleNotifications={() => setNotificationsEnabled((prev) => !prev)} showSidebarCount={showSidebarCount} onToggleSidebarCount={() => setShowSidebarCount((prev) => !prev)} /> : <div className="content">
+        {activePage === 'Medicines' ? <MedicineCatalog /> : activePage === 'Inventory' ? <InventoryStock /> : activePage === 'Suppliers' ? <SupplierDirectory /> : activePage === 'Purchases' ? <PurchaseOrders /> : activePage === 'Customers' ? <CustomerDirectory /> : activePage === 'Stock History' ? <StockHistory /> : activePage === 'Alerts' ? <Alerts notificationsEnabled={notificationsEnabled} onToggleNotifications={() => setNotificationsEnabled((prev) => !prev)} showSidebarCount={showSidebarCount} onToggleSidebarCount={() => setShowSidebarCount((prev) => !prev)} /> : <div className="content">
           <div className="welcome-row">
             <p>Here&apos;s what&apos;s happening today.</p>
             <div className="quick-actions"><button className="secondary-button"><Icon name="plus" size={18} /> New purchase</button><button className="primary-button"><Icon name="cart" size={19} /> Create sale</button></div>
