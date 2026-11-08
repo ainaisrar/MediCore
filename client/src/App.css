@@ -58,6 +58,72 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .profile-menu-items button { display: flex; align-items: center; gap: 16px; width: 100%; min-height: 52px; padding: 9px 24px; border: 0; color: #40516b; background: transparent; font-size: 17px; font-weight: 600; text-align: left; cursor: pointer; }
 .profile-menu-items button .icon { color: #91a6c4; }
 .profile-menu button:hover, .profile-menu button:focus-visible { outline: 0; background: #f2f6fd; }
+.profile-modal-backdrop { background: rgba(12, 33, 65, .56); }
+.profile-modal { width: 100%; max-width: 720px; overflow: hidden; border-radius: 22px; background: #fff; box-shadow: 0 24px 60px rgba(12, 33, 65, .3); }
+.profile-modal-heading { position: relative; min-height: 238px; padding: 28px 40px; color: #fff; background: linear-gradient(135deg, #0c2141, #173b70); }
+.profile-modal-heading h2 { margin: 0 0 7px; font-size: 23px; }
+.profile-modal-heading > div:first-child p { margin: 0; color: #aab9cf; font-size: 16px; }
+.profile-modal-close { position: absolute; top: 22px; right: 40px; display: grid; place-items: center; width: 45px; height: 45px; border: 0; border-radius: 15px; color: #c9d5e5; background: rgba(111, 151, 207, .28); cursor: pointer; }
+.profile-modal-identity { position: absolute; bottom: 35px; left: 40px; display: flex; align-items: center; gap: 20px; }
+.profile-modal-avatar { display: grid; place-items: center; width: 80px; height: 80px; border-radius: 19px; color: #fff; background: linear-gradient(135deg, #198cff, #00c59f); font-size: 23px; font-weight: 800; }
+.profile-modal-identity h3 { margin: 0 0 8px; font-size: 26px; }
+.profile-modal-status { display: flex; align-items: center; gap: 12px; }
+.profile-modal-status .profile-role { position: static; padding: 6px 11px; font-size: 12px; }
+.profile-modal-status > span:last-child { display: flex; align-items: center; gap: 7px; color: #aab9cf; font-size: 14px; }
+.profile-modal-status > span:last-child i { width: 8px; height: 8px; border-radius: 50%; background: #11c995; }
+.profile-modal-body { display: grid; grid-template-columns: 1fr 1fr; gap: 26px 24px; padding: 40px; }
+.profile-modal-body label { display: grid; gap: 10px; }
+.profile-modal-body label span { color: #637795; font-size: 13px; font-weight: 800; letter-spacing: .5px; }
+.profile-modal-body input { width: 100%; height: 55px; padding: 0 17px; border: 1px solid #dfe7f1; border-radius: 15px; outline: 0; color: #30425f; background: #fff; font-size: 16px; }
+.profile-modal-body input:disabled { color: #7185a3; background: #f5f8fb; }
+.profile-modal-footer { display: flex; justify-content: flex-end; gap: 14px; padding: 0 40px 30px; border-top: 1px solid #edf1f6; padding-top: 25px; }
+.profile-modal-footer .secondary-button, .profile-modal-footer .primary-button { min-width: 106px; justify-content: center; }
+.settings-modal { width: 100%; max-width: 650px; overflow: hidden; border-radius: 22px; background: #fff; box-shadow: 0 24px 60px rgba(12, 33, 65, .3); }
+.settings-modal-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 28px 40px 24px; border-bottom: 1px solid #edf1f6; }
+.settings-modal-header h2 { margin: 0 0 7px; color: #152642; font-size: 23px; }
+.settings-modal-header p { margin: 0; color: #788aa3; font-size: 15px; }
+.settings-modal-body { display: grid; grid-template-columns: 1fr 1fr; gap: 20px 24px; padding: 30px 40px; }
+.settings-field { display: grid; gap: 9px; }
+.settings-field > span { color: #637795; font-size: 13px; font-weight: 800; letter-spacing: .4px; }
+.settings-field select { width: 100%; height: 50px; padding: 0 14px; border: 1px solid #dfe7f1; border-radius: 12px; color: #30425f; background: #fff; font: inherit; outline: 0; }
+.settings-toggle { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 73px; padding: 13px 15px; border: 1px solid #e6ecf4; border-radius: 13px; background: #f8faff; cursor: pointer; }
+.settings-toggle strong, .settings-toggle small { display: block; }
+.settings-toggle strong { color: #30425f; font-size: 14px; }
+.settings-toggle small { margin-top: 5px; color: #788aa3; font-size: 12px; }
+.dark-theme { --page: #101a2b; --surface: #17243a; --ink: #e7eef9; --line: #2b3a52; --muted: #9bacc3; }
+.dark-theme .topbar, .dark-theme .panel, .dark-theme .metric-card, .dark-theme .profile-menu, .dark-theme .settings-modal { border-color: #2b3a52; }
+.dark-theme .content, .dark-theme .topbar { background: var(--page); }
+.dark-theme .topbar, .dark-theme .panel, .dark-theme .metric-card { background: var(--surface); }
+.dark-theme .page-title h1, .dark-theme .panel h2, .dark-theme .profile-menu-identity strong { color: var(--ink); }
+.dark-theme .profile-menu-items button, .dark-theme .settings-modal-header h2, .dark-theme .settings-field select, .dark-theme .settings-toggle strong { color: var(--ink); }
+.dark-theme .settings-modal, .dark-theme .settings-modal-header { background: var(--surface); border-color: #2b3a52; }
+.dark-theme .settings-field select, .dark-theme .settings-toggle { border-color: #2b3a52; color: var(--ink); background: #1d2b42; }
+.dark-theme .search-box, .dark-theme .notification-button, .dark-theme .profile-button, .dark-theme .catalog-search, .dark-theme .catalog-button { border-color: #2b3a52; color: #b6c4d9; background: #1d2b42; }
+.dark-theme .profile-button { color: #c3cfdf; }
+.dark-theme .profile-button .profile-copy strong { color: var(--ink); }
+.dark-theme .profile-button .profile-copy small { color: #9bacc3; }
+.dark-theme .profile-button .avatar { color: #bcd3ff; background: #263d68; }
+.dark-theme .profile-menu { border-color: #2b3a52; background: #17243a; box-shadow: 0 12px 28px rgba(0, 0, 0, .35); }
+.dark-theme .profile-menu-header { border-color: #2b3a52; background: #17243a; }
+.dark-theme .profile-menu-identity strong { color: #e7eef9; }
+.dark-theme .profile-menu-identity span { color: #9bacc3; }
+.dark-theme .profile-menu-items button { color: #c3cfdf; }
+.dark-theme .profile-menu-items button .icon { color: #9eb4d3; }
+.dark-theme .profile-menu-items button:hover, .dark-theme .profile-menu-items button:focus-visible { background: #263650; }
+.dark-theme .profile-role { color: #5ee0b4; background: #123f3b; }
+.dark-theme .search-box input, .dark-theme .catalog-search input, .dark-theme .table-search input { color: var(--ink); }
+.dark-theme .search-box input::placeholder, .dark-theme .catalog-search input::placeholder { color: #8192ad; }
+.dark-theme .medicine-panel, .dark-theme .billing-panel, .dark-theme .table-wrap, .dark-theme .alerts-panel, .dark-theme .history-panel, .dark-theme .supplier-panel, .dark-theme .purchase-panel, .dark-theme .customer-panel { border-color: #2b3a52; background: var(--surface); }
+.dark-theme .medicine-heading, .dark-theme .billing-heading, .dark-theme .medicine-toolbar, .dark-theme .billing-toolbar, .dark-theme .medicine-footer, .dark-theme .panel-header { border-color: #2b3a52; }
+.dark-theme table th { color: #9eb0c8; background: #1d2b42; border-color: #2b3a52; }
+.dark-theme table td { color: #c3cfdf; border-color: #2b3a52; }
+.dark-theme table td strong, .dark-theme .medicine-heading h2, .dark-theme .billing-heading h2, .dark-theme .panel-header h2 { color: var(--ink); }
+.dark-theme .empty-value, .dark-theme .metric-copy small { background: #263650; }
+.dark-theme .secondary-button, .dark-theme .modal-close, .dark-theme .profile-modal-footer .secondary-button { border-color: #2b3a52; color: var(--ink); background: #1d2b42; }
+.dark-theme .profile-modal { background: var(--surface); }
+.dark-theme .profile-modal-body { background: var(--surface); }
+.dark-theme .profile-modal-body input { border-color: #2b3a52; color: var(--ink); background: #1d2b42; }
+.dark-theme .profile-modal-body input:disabled { background: #202f47; }
 
 .content { max-width: 1400px; margin: 0 auto; padding: 33px 35px 48px; }
 .welcome-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 26px; }
@@ -245,6 +311,14 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .customer-content { padding-right: 22px; padding-left: 22px; }
   .sales-content { padding-right: 22px; padding-left: 22px; }
   .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+  .profile-modal-heading { padding-right: 25px; padding-left: 25px; }
+  .profile-modal-identity { left: 25px; }
+  .profile-modal-body { padding: 28px 25px; }
+  .profile-modal-footer { padding-right: 25px; padding-left: 25px; }
+  .settings-modal-header { padding-right: 25px; padding-left: 25px; }
+  .settings-modal-body { padding-right: 25px; padding-left: 25px; }
+  .settings-modal-header { padding: 24px 20px; }
+  .settings-modal-body { grid-template-columns: 1fr; padding: 24px 20px; }
 }
 @media (max-width: 780px) {
   .sidebar { position: static; width: 70px; padding: 15px 8px; }
@@ -292,6 +366,13 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .quick-actions { width: 100%; }
   .secondary-button, .primary-button { flex: 1; justify-content: center; padding: 0 8px; font-size: 13px; }
   .profile-button { display: none; }
+  .profile-modal-heading { padding: 24px 20px; }
+  .profile-modal-close { right: 20px; }
+  .profile-modal-identity { bottom: 25px; left: 20px; gap: 12px; }
+  .profile-modal-avatar { width: 62px; height: 62px; }
+  .profile-modal-identity h3 { font-size: 21px; }
+  .profile-modal-body { grid-template-columns: 1fr; padding: 24px 20px; }
+  .profile-modal-footer { padding: 20px; }
   .topbar-actions { gap: 8px; }
 }
 

@@ -16,13 +16,13 @@ const navigation = [
   ['user', 'User Management'],
 ]
 
-function getDateRealTime() {
-  return new Date().toLocaleDateString('en-GB', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  })
+function formatDate(date, format) {
+  const day = String(date.getDate()).padStart(2, '0')
+  const month = date.toLocaleString('en-US', { month: 'long' })
+  const year = date.getFullYear()
+  if (format === 'Month DD, YYYY') return `${month} ${day}, ${year}`
+  if (format === 'YYYY Month DD') return `${year} ${month} ${day}`
+  return `${day} ${month} ${year}`
 }
 
 function getDisplayName(email) {
@@ -526,8 +526,17 @@ function App() {
   const [activePage, setActivePage] = useState('Dashboard')
   const [notificationsEnabled, setNotificationsEnabled] = useState(true)
   const [showSidebarCount, setShowSidebarCount] = useState(true)
+  const [currentDate] = useState(() => new Date())
   const [userEmail, setUserEmail] = useState('')
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false)
+  const [dateFormat, setDateFormat] = useState('DD Month YYYY')
+  const [currency, setCurrency] = useState('PKR (Rs.)')
+  const [automaticLock, setAutomaticLock] = useState(true)
+  const [sessionTimeout, setSessionTimeout] = useState('30 minutes')
+  const [paymentMethod, setPaymentMethod] = useState('Cash')
+  const [isDarkTheme, setIsDarkTheme] = useState(false)
   const profileMenuRef = useRef(null)
   const userName = getDisplayName(userEmail)
   const userInitials = getInitials(userName)
@@ -560,7 +569,7 @@ function App() {
   }
 
   return (
-    <div className="dashboard-app">
+    <div className={isDarkTheme ? 'dashboard-app dark-theme' : 'dashboard-app'}>
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">M<span>+</span></div>
@@ -580,7 +589,7 @@ function App() {
 
       <main className="dashboard-main">
         <header className="topbar">
-          <div className="page-title"><h1>{activePage === 'Medicines' ? 'Medicine & Batch Management' : activePage === 'Inventory' ? 'Inventory & Stock' : activePage === 'Suppliers' ? 'Suppliers' : activePage === 'Purchases' ? 'Purchases' : activePage === 'Sales & Billing' ? 'Sales & Billing' : activePage === 'Customers' ? 'Customer Directory' : activePage === 'Stock History' ? 'Stock Movement History' : activePage === 'Alerts' ? 'Inventory Alerts' : 'Dashboard'}</h1><span>{getDateRealTime()}</span></div>
+          <div className="page-title"><h1>{activePage === 'Medicines' ? 'Medicine & Batch Management' : activePage === 'Inventory' ? 'Inventory & Stock' : activePage === 'Suppliers' ? 'Suppliers' : activePage === 'Purchases' ? 'Purchases' : activePage === 'Sales & Billing' ? 'Sales & Billing' : activePage === 'Customers' ? 'Customer Directory' : activePage === 'Stock History' ? 'Stock Movement History' : activePage === 'Alerts' ? 'Inventory Alerts' : 'Dashboard'}</h1><span>{formatDate(currentDate, dateFormat)}</span></div>
           <div className="topbar-actions">
             <label className="search-box"><Icon name="search" size={20} /><input placeholder="Search records..." aria-label="Search records" /></label>
             <button className="notification-button" type="button" onClick={() => setActivePage('Alerts')} aria-label="Notifications"><Icon name="bell" size={21} />{notificationsEnabled && <i />}</button>
@@ -601,14 +610,76 @@ function App() {
                     <span className="profile-role"><Icon name="shield" size={14} /> ADMINISTRATOR</span>
                   </div>
                   <div className="profile-menu-items">
-                    <button type="button" role="menuitem" onClick={() => setIsProfileMenuOpen(false)}><Icon name="user" size={22} />My profile</button>
-                    <button type="button" role="menuitem" onClick={() => setIsProfileMenuOpen(false)}><Icon name="settings" size={22} />Account settings</button>
+                    <button type="button" role="menuitem" onClick={() => { setIsProfileMenuOpen(false); setIsProfileModalOpen(true) }}><Icon name="user" size={22} />My profile</button>
+                    <button type="button" role="menuitem" onClick={() => { setIsProfileMenuOpen(false); setIsSettingsModalOpen(true) }}><Icon name="settings" size={22} />Account settings</button>
                   </div>
                 </div>
               )}
             </div>
           </div>
         </header>
+
+        {isProfileModalOpen && (
+          <div className="modal-backdrop profile-modal-backdrop" onClick={() => setIsProfileModalOpen(false)}>
+            <div className="profile-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
+              <div className="profile-modal-heading">
+                <div>
+                  <h2 id="profile-modal-title">My Profile</h2>
+                  <p>Manage your personal and account information</p>
+                </div>
+                <button className="profile-modal-close" type="button" onClick={() => setIsProfileModalOpen(false)} aria-label="Close profile">
+                  <Icon name="close" size={20} />
+                </button>
+                <div className="profile-modal-identity">
+                  <span className="profile-modal-avatar">{userInitials}</span>
+                  <div>
+                    <h3>{userName}</h3>
+                    <div className="profile-modal-status"><span className="profile-role"><Icon name="shield" size={14} /> ADMINISTRATOR</span><span><i /> Active</span></div>
+                  </div>
+                </div>
+              </div>
+              <div className="profile-modal-body">
+                <label><span>FULL NAME</span><input value={userName} readOnly /></label>
+                <label><span>EMAIL ADDRESS</span><input value={userEmail} readOnly /></label>
+                <label><span>EMPLOYEE ID</span><input value="ADM-001" readOnly disabled /></label>
+                <label><span>ROLE</span><input value="Administrator" readOnly disabled /></label>
+                <label><span>LAST LOGIN</span><input value="Today, 10:42 AM" readOnly disabled /></label>
+              </div>
+              <div className="profile-modal-footer">
+                <button className="secondary-button" type="button" onClick={() => setIsProfileModalOpen(false)}>Cancel</button>
+                <button className="primary-button" type="button" onClick={() => setIsProfileModalOpen(false)}>Save changes</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isSettingsModalOpen && (
+          <div className="modal-backdrop profile-modal-backdrop" onClick={() => setIsSettingsModalOpen(false)}>
+            <div className="settings-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
+              <div className="settings-modal-header">
+                <div>
+                  <h2 id="settings-modal-title">Account Settings</h2>
+                  <p>Customize your pharmacy workspace preferences</p>
+                </div>
+                <button className="profile-modal-close" type="button" onClick={() => setIsSettingsModalOpen(false)} aria-label="Close account settings">
+                  <Icon name="close" size={20} />
+                </button>
+              </div>
+              <div className="settings-modal-body">
+                <label className="settings-field"><span>Date format</span><select value={dateFormat} onChange={(event) => setDateFormat(event.target.value)}><option>DD Month YYYY</option><option>Month DD, YYYY</option><option>YYYY Month DD</option></select></label>
+                <label className="settings-field"><span>Currency</span><select value={currency} onChange={(event) => setCurrency(event.target.value)}><option>PKR (Rs.)</option><option>USD ($)</option><option>EUR (€)</option></select></label>
+                <label className="settings-toggle"><span><strong>Automatic screen lock</strong><small>Lock the dashboard when it is inactive</small></span><input type="checkbox" className="toggle-switch" checked={automaticLock} onChange={(event) => setAutomaticLock(event.target.checked)} /></label>
+                <label className="settings-field"><span>Session timeout</span><select value={sessionTimeout} onChange={(event) => setSessionTimeout(event.target.value)}><option>15 minutes</option><option>30 minutes</option><option>60 minutes</option><option>Never</option></select></label>
+                <label className="settings-field"><span>Default payment method</span><select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option>Cash</option><option>Card</option><option>Bank transfer</option></select></label>
+                <label className="settings-toggle"><span><strong>Dark theme</strong><small>Use a darker appearance across the dashboard</small></span><input type="checkbox" className="toggle-switch" checked={isDarkTheme} onChange={(event) => setIsDarkTheme(event.target.checked)} /></label>
+              </div>
+              <div className="profile-modal-footer">
+                <button className="secondary-button" type="button" onClick={() => setIsSettingsModalOpen(false)}>Cancel</button>
+                <button className="primary-button" type="button" onClick={() => setIsSettingsModalOpen(false)}>Save changes</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {activePage === 'Medicines' ? <MedicineCatalog /> : activePage === 'Inventory' ? <InventoryStock /> : activePage === 'Suppliers' ? <SupplierDirectory /> : activePage === 'Purchases' ? <PurchaseOrders /> : activePage === 'Sales & Billing' ? <SalesBilling /> : activePage === 'Customers' ? <CustomerDirectory /> : activePage === 'Stock History' ? <StockHistory /> : activePage === 'Alerts' ? <Alerts notificationsEnabled={notificationsEnabled} onToggleNotifications={() => setNotificationsEnabled((prev) => !prev)} showSidebarCount={showSidebarCount} onToggleSidebarCount={() => setShowSidebarCount((prev) => !prev)} /> : <div className="content">
           <div className="welcome-row">
