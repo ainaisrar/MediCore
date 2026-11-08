@@ -40,11 +40,24 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .notification-button, .profile-button { border: 1px solid #e1e8f2; color: #536884; background: #fff; cursor: pointer; }
 .notification-button { position: relative; display: grid; place-items: center; width: 45px; height: 45px; border-radius: 13px; }
 .notification-button i { position: absolute; top: 9px; right: 8px; width: 7px; height: 7px; border-radius: 50%; background: #fa2b62; }
+.profile-menu-wrapper { position: relative; }
 .profile-button { display: flex; align-items: center; gap: 10px; height: 49px; padding: 4px 11px 4px 6px; border-radius: 13px; text-align: left; }
 .avatar { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; color: #215ee3; font-weight: 800; background: #e5efff; }
 .profile-copy { display: flex; flex-direction: column; gap: 2px; min-width: 103px; }
 .profile-copy strong { color: var(--ink); font-size: 13px; }
 .profile-copy small { color: var(--muted); font-size: 11px; }
+.profile-menu { position: absolute; z-index: 3; top: calc(100% + 8px); right: 0; width: 340px; overflow: hidden; border: 1px solid #e1e8f2; border-radius: 12px; background: #fff; box-shadow: 0 12px 28px rgba(29, 61, 102, .14); }
+.profile-menu-header { position: relative; display: flex; min-height: 133px; padding: 16px 18px 46px; border-bottom: 1px solid #edf1f6; }
+.profile-menu-avatar { display: grid; place-items: center; width: 55px; height: 55px; border-radius: 14px; color: #fff; background: #2164f5; box-shadow: 0 7px 14px rgba(33, 100, 245, .2); font-size: 16px; font-weight: 800; }
+.profile-menu-identity { display: flex; flex-direction: column; gap: 5px; margin: 7px 0 0 15px; }
+.profile-menu-identity strong { color: #152642; font-size: 18px; }
+.profile-menu-identity span { color: #7485a0; font-size: 13px; }
+.profile-role { position: absolute; bottom: 17px; left: 18px; display: flex; align-items: center; gap: 7px; padding: 6px 12px; border-radius: 14px; color: #008b63; background: #eafaf3; font-size: 12px; font-weight: 800; letter-spacing: .3px; }
+.profile-role .icon { stroke-width: 2; }
+.profile-menu-items { padding: 7px 0; }
+.profile-menu-items button { display: flex; align-items: center; gap: 16px; width: 100%; min-height: 52px; padding: 9px 24px; border: 0; color: #40516b; background: transparent; font-size: 17px; font-weight: 600; text-align: left; cursor: pointer; }
+.profile-menu-items button .icon { color: #91a6c4; }
+.profile-menu button:hover, .profile-menu button:focus-visible { outline: 0; background: #f2f6fd; }
 
 .content { max-width: 1400px; margin: 0 auto; padding: 33px 35px 48px; }
 .welcome-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 26px; }

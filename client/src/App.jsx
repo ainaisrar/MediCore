@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import './Login.css'
 
@@ -25,6 +25,15 @@ function getDateRealTime() {
   })
 }
 
+function getDisplayName(email) {
+  const localPart = email.split('@')[0].replace(/[._-]+/g, ' ').trim()
+  return localPart ? localPart.split(' ').map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()).join(' ') : 'Administrator'
+}
+
+function getInitials(name) {
+  return name.split(' ').map((part) => part.charAt(0)).join('').slice(0, 2).toUpperCase()
+}
+
 function Icon({ name, size = 21 }) {
   const paths = {
     dashboard: <><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><rect x="14" y="14" width="6" height="6" rx="1" /></>,
@@ -38,6 +47,7 @@ function Icon({ name, size = 21 }) {
     report: <><path d="M5 3h10l4 4v14H5z" /><path d="M15 3v5h4M8 13h8M8 17h6" /></>,
     history: <><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v6h6M12 7v5l3 2" /></>,
     user: <><circle cx="12" cy="8" r="3" /><path d="M4 21c.7-4 3.3-6 8-6s7.3 2 8 6" /></>,
+    settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-1.4 1.4-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-2v-.2a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L9 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H7.6v-2h.2a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L9 9l1.4-1.4.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6v-.2h2v.2a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 9l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v2H21a1.7 1.7 0 0 0-1.6 1Z" /></>,
     search: <><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4.5 4.5" /></>,
     plus: <><path d="M12 5v14M5 12h14" /></>,
     chevron: <path d="m8 10 4 4 4-4" />,
@@ -61,6 +71,7 @@ function Icon({ name, size = 21 }) {
 function SignIn({ onSignIn }) {
   const [showPassword, setShowPassword] = useState(false)
   const [keepSignedIn, setKeepSignedIn] = useState(false)
+  const [email, setEmail] = useState('')
 
   return (
     <main className="login-container">
@@ -101,8 +112,8 @@ function SignIn({ onSignIn }) {
           <div className="access-header">STAFF ACCESS</div>
           <h2>Welcome back</h2>
           <p className="form-subtitle">Sign in to manage your pharmacy operations.</p>
-          <form onSubmit={(event) => { event.preventDefault(); onSignIn() }}>
-            <div className="form-group"><label htmlFor="email">Email address</label><div className="input-wrapper"><Icon name="mail" size={22} /><input type="email" id="email" placeholder="name@pharmacy.com" /></div></div>
+          <form onSubmit={(event) => { event.preventDefault(); onSignIn(email) }}>
+            <div className="form-group"><label htmlFor="email">Email address</label><div className="input-wrapper"><Icon name="mail" size={22} /><input type="email" id="email" placeholder="name@pharmacy.com" value={email} onChange={(event) => setEmail(event.target.value)} required /></div></div>
             <div className="form-group password-group"><div className="label-row"><label htmlFor="password">Password</label><a href="#forgot">Forgot password?</a></div><div className="input-wrapper"><Icon name="lock" size={22} /><input type={showPassword ? 'text' : 'password'} id="password" placeholder="Enter your password" /><button type="button" className="show-password" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'}><Icon name="eye" size={21} /></button></div></div>
             <label className="checkbox-label"><input type="checkbox" checked={keepSignedIn} onChange={(event) => setKeepSignedIn(event.target.checked)} /><span>Keep me signed in on this device</span></label>
             <button type="submit" className="submit-button">Sign in to MediCore <Icon name="arrow" size={21} /></button>
@@ -515,9 +526,37 @@ function App() {
   const [activePage, setActivePage] = useState('Dashboard')
   const [notificationsEnabled, setNotificationsEnabled] = useState(true)
   const [showSidebarCount, setShowSidebarCount] = useState(true)
+  const [userEmail, setUserEmail] = useState('')
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
+  const profileMenuRef = useRef(null)
+  const userName = getDisplayName(userEmail)
+  const userInitials = getInitials(userName)
+
+  useEffect(() => {
+    if (!isProfileMenuOpen) return undefined
+
+    function closeProfileMenu(event) {
+      if (!profileMenuRef.current?.contains(event.target)) {
+        setIsProfileMenuOpen(false)
+      }
+    }
+
+    function closeProfileMenuOnEscape(event) {
+      if (event.key === 'Escape') {
+        setIsProfileMenuOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', closeProfileMenu)
+    document.addEventListener('keydown', closeProfileMenuOnEscape)
+    return () => {
+      document.removeEventListener('mousedown', closeProfileMenu)
+      document.removeEventListener('keydown', closeProfileMenuOnEscape)
+    }
+  }, [isProfileMenuOpen])
 
   if (!signedIn) {
-    return <SignIn onSignIn={() => setSignedIn(true)} />
+    return <SignIn onSignIn={(email) => { setUserEmail(email); setSignedIn(true) }} />
   }
 
   return (
@@ -545,7 +584,29 @@ function App() {
           <div className="topbar-actions">
             <label className="search-box"><Icon name="search" size={20} /><input placeholder="Search records..." aria-label="Search records" /></label>
             <button className="notification-button" type="button" onClick={() => setActivePage('Alerts')} aria-label="Notifications"><Icon name="bell" size={21} />{notificationsEnabled && <i />}</button>
-            <button className="profile-button"><span className="avatar">A</span><span className="profile-copy"><strong>Administrator</strong><small>Pharmacy account</small></span><Icon name="chevron" size={17} /></button>
+            <div className="profile-menu-wrapper" ref={profileMenuRef}>
+              <button className="profile-button" type="button" aria-expanded={isProfileMenuOpen} aria-haspopup="menu" onClick={() => setIsProfileMenuOpen((isOpen) => !isOpen)}>
+                <span className="avatar">{userInitials}</span>
+                <span className="profile-copy"><strong>{userName}</strong><small>Pharmacy account</small></span>
+                <Icon name="chevron" size={17} />
+              </button>
+              {isProfileMenuOpen && (
+                <div className="profile-menu" role="menu">
+                  <div className="profile-menu-header">
+                    <span className="profile-menu-avatar">{userInitials}</span>
+                    <div className="profile-menu-identity">
+                      <strong>{userName}</strong>
+                      <span>{userEmail}</span>
+                    </div>
+                    <span className="profile-role"><Icon name="shield" size={14} /> ADMINISTRATOR</span>
+                  </div>
+                  <div className="profile-menu-items">
+                    <button type="button" role="menuitem" onClick={() => setIsProfileMenuOpen(false)}><Icon name="user" size={22} />My profile</button>
+                    <button type="button" role="menuitem" onClick={() => setIsProfileMenuOpen(false)}><Icon name="settings" size={22} />Account settings</button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
