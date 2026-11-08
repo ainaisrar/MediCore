@@ -112,9 +112,9 @@ function SignIn({ onSignIn }) {
           <div className="access-header">STAFF ACCESS</div>
           <h2>Welcome back</h2>
           <p className="form-subtitle">Sign in to manage your pharmacy operations.</p>
-          <form onSubmit={(event) => { event.preventDefault(); onSignIn(email) }}>
+          <form onSubmit={(event) => { event.preventDefault(); if (email.trim()) onSignIn(email) }}>
             <div className="form-group"><label htmlFor="email">Email address</label><div className="input-wrapper"><Icon name="mail" size={22} /><input type="email" id="email" placeholder="name@pharmacy.com" value={email} onChange={(event) => setEmail(event.target.value)} required /></div></div>
-            <div className="form-group password-group"><div className="label-row"><label htmlFor="password">Password</label><a href="#forgot">Forgot password?</a></div><div className="input-wrapper"><Icon name="lock" size={22} /><input type={showPassword ? 'text' : 'password'} id="password" placeholder="Enter your password" /><button type="button" className="show-password" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'}><Icon name="eye" size={21} /></button></div></div>
+            <div className="form-group password-group"><div className="label-row"><label htmlFor="password">Password</label><a href="#forgot">Forgot password?</a></div><div className="input-wrapper"><Icon name="lock" size={22} /><input type={showPassword ? 'text' : 'password'} id="password" placeholder="Enter your password" required /><button type="button" className="show-password" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'}><Icon name="eye" size={21} /></button></div></div>
             <label className="checkbox-label"><input type="checkbox" checked={keepSignedIn} onChange={(event) => setKeepSignedIn(event.target.checked)} /><span>Keep me signed in on this device</span></label>
             <button type="submit" className="submit-button">Sign in to MediCore <Icon name="arrow" size={21} /></button>
           </form>
