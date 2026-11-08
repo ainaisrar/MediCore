@@ -441,6 +441,20 @@ function Alerts({ notificationsEnabled, onToggleNotifications, showSidebarCount,
 
   return (
     <div className="alerts-content">
+      <section className="alert-summary-grid" aria-label="Alert summary">
+        <article className="alert-summary-card low-stock">
+          <div><span>Low stock</span><strong>18</strong><small><i>↗</i> 5 critical items</small></div>
+          <div className="alert-summary-icon"><Icon name="cube" size={25} /></div>
+        </article>
+        <article className="alert-summary-card near-expiry">
+          <div><span>Near expiry</span><strong>9</strong><small><i>↗</i> Within next 30 days</small></div>
+          <div className="alert-summary-icon"><Icon name="history" size={25} /></div>
+        </article>
+        <article className="alert-summary-card expired">
+          <div><span>Expired</span><strong>4</strong><small><i>↗</i> Blocked from sale</small></div>
+          <div className="alert-summary-icon"><Icon name="close" size={25} /></div>
+        </article>
+      </section>
       <section className="alerts-panel">
         <div className="alerts-heading">
           <div>
