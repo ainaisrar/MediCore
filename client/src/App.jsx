@@ -403,7 +403,7 @@ function App() {
           <div className="page-title"><h1>{activePage === 'Medicines' ? 'Medicine & Batch Management' : activePage === 'Inventory' ? 'Inventory & Stock' : activePage === 'Suppliers' ? 'Suppliers' : activePage === 'Purchases' ? 'Purchases' : activePage === 'Stock History' ? 'Stock Movement History' : activePage === 'Alerts' ? 'Inventory Alerts' : 'Dashboard'}</h1><span>{activePage === 'Medicines' || activePage === 'Inventory' || activePage === 'Suppliers' || activePage === 'Purchases' || activePage === 'Stock History' || activePage === 'Alerts' ? 'Thursday, 12 June 2025' : 'Today'}</span></div>
           <div className="topbar-actions">
             <label className="search-box"><Icon name="search" size={20} /><input placeholder="Search records..." aria-label="Search records" /></label>
-            <button className="notification-button" aria-label="Notifications"><Icon name="bell" size={21} /><i /></button>
+            <button className="notification-button" type="button" onClick={() => setActivePage('Alerts')} aria-label="Notifications"><Icon name="bell" size={21} /><i /></button>
             <button className="profile-button"><span className="avatar">A</span><span className="profile-copy"><strong>Administrator</strong><small>Pharmacy account</small></span><Icon name="chevron" size={17} /></button>
           </div>
         </header>
@@ -427,7 +427,7 @@ function App() {
               <div className="empty-chart" aria-label="Sales chart awaiting data"><div className="chart-placeholder" /><span>No sales data yet</span></div>
             </article>
             <article className="panel alerts-panel">
-              <div className="panel-header"><div><h2>Inventory alerts</h2><p>Items requiring action</p></div><a href="#alerts">View all <Icon name="arrow" size={16} /></a></div>
+              <div className="panel-header"><div><h2>Inventory alerts</h2><p>Items requiring action</p></div><a href="#alerts" onClick={(event) => { event.preventDefault(); setActivePage('Alerts') }}>View all <Icon name="arrow" size={16} /></a></div>
               <div className="alert-empty"><div className="empty-state-icon"><Icon name="bell" size={23} /></div><strong>No alerts yet</strong><span>Low-stock and expiry alerts will appear here.</span></div>
             </article>
           </section>
