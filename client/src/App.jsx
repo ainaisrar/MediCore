@@ -575,6 +575,46 @@ function Alerts({ notificationsEnabled, onToggleNotifications, showSidebarCount,
   )
 }
 
+function UserManagement() {
+  const [query, setQuery] = useState('')
+  const users = []
+  const filteredUsers = users.filter((user) =>
+    Object.values(user).some((value) => String(value).toLowerCase().includes(query.toLowerCase())),
+  )
+
+  return (
+    <div className="users-content">
+      <section className="users-panel">
+        <div className="users-heading">
+          <div>
+            <h2>User management</h2>
+            <p>Manage system users, assign roles, and monitor account access permissions.</p>
+          </div>
+          <button className="primary-button"><Icon name="user" size={19} /> Add user</button>
+        </div>
+        <div className="users-toolbar">
+          <label className="catalog-search"><Icon name="search" size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search user accounts..." aria-label="Search user accounts" /></label>
+          <button className="catalog-button"><Icon name="filter" size={19} /> Filters</button>
+          <button className="catalog-button"><Icon name="download" size={18} /> Export</button>
+        </div>
+        <div className="users-table-wrap">
+          <table className="medicine-table users-table">
+            <thead><tr><th>User</th><th>Role</th><th>Email</th><th>Phone</th><th>Access Level</th><th>Last Login</th><th>Status</th></tr></thead>
+            <tbody>{filteredUsers.map((user) => <tr key={user.id || user.email || user.name}>
+              <td><strong>{user.name}</strong></td><td>{user.role}</td><td>{user.email}</td><td>{user.phone}</td><td>{user.access}</td><td>{user.lastLogin}</td><td>{user.status}</td>
+            </tr>)}</tbody>
+          </table>
+          {filteredUsers.length === 0 && <div className="users-empty-space" aria-label="No user records" />}
+        </div>
+        <div className="medicine-footer">
+          <span>Showing {filteredUsers.length} of {users.length} records</span>
+          <div className="pagination"><button disabled>Previous</button><button className="current-page">1</button><button disabled>Next</button></div>
+        </div>
+      </section>
+    </div>
+  )
+}
+
 function App() {
   const [signedIn, setSignedIn] = useState(false)
   const [activePage, setActivePage] = useState('Dashboard')
@@ -643,7 +683,7 @@ function App() {
 
       <main className="dashboard-main">
         <header className="topbar">
-          <div className="page-title"><h1>{activePage === 'Medicines' ? 'Medicine & Batch Management' : activePage === 'Inventory' ? 'Inventory & Stock' : activePage === 'Suppliers' ? 'Suppliers' : activePage === 'Purchases' ? 'Purchases' : activePage === 'Sales & Billing' ? 'Sales & Billing' : activePage === 'Customers' ? 'Customer Directory' : activePage === 'Stock History' ? 'Stock Movement History' : activePage === 'Alerts' ? 'Inventory Alerts' : activePage === 'Reports' ? 'Analytics & Reports' : 'Dashboard'}</h1><span>{formatDate(currentDate, dateFormat)}</span></div>
+          <div className="page-title"><h1>{activePage === 'Medicines' ? 'Medicine & Batch Management' : activePage === 'Inventory' ? 'Inventory & Stock' : activePage === 'Suppliers' ? 'Suppliers' : activePage === 'Purchases' ? 'Purchases' : activePage === 'Sales & Billing' ? 'Sales & Billing' : activePage === 'Customers' ? 'Customer Directory' : activePage === 'Stock History' ? 'Stock Movement History' : activePage === 'Alerts' ? 'Inventory Alerts' : activePage === 'Reports' ? 'Analytics & Reports' : activePage === 'User Management' ? 'User Management' : 'Dashboard'}</h1><span>{formatDate(currentDate, dateFormat)}</span></div>
           <div className="topbar-actions">
             <label className="search-box"><Icon name="search" size={20} /><input placeholder="Search records..." aria-label="Search records" /></label>
             <button className="notification-button" type="button" onClick={() => setActivePage('Alerts')} aria-label="Notifications"><Icon name="bell" size={21} />{notificationsEnabled && <i />}</button>
@@ -735,7 +775,7 @@ function App() {
           </div>
         )}
 
-        {activePage === 'Medicines' ? <MedicineCatalog /> : activePage === 'Inventory' ? <InventoryStock /> : activePage === 'Suppliers' ? <SupplierDirectory /> : activePage === 'Purchases' ? <PurchaseOrders /> : activePage === 'Sales & Billing' ? <SalesBilling /> : activePage === 'Customers' ? <CustomerDirectory /> : activePage === 'Stock History' ? <StockHistory /> : activePage === 'Alerts' ? <Alerts notificationsEnabled={notificationsEnabled} onToggleNotifications={() => setNotificationsEnabled((prev) => !prev)} showSidebarCount={showSidebarCount} onToggleSidebarCount={() => setShowSidebarCount((prev) => !prev)} /> : activePage === 'Reports' ? <ReportsDirectory /> : <div className="content">
+        {activePage === 'Medicines' ? <MedicineCatalog /> : activePage === 'Inventory' ? <InventoryStock /> : activePage === 'Suppliers' ? <SupplierDirectory /> : activePage === 'Purchases' ? <PurchaseOrders /> : activePage === 'Sales & Billing' ? <SalesBilling /> : activePage === 'Customers' ? <CustomerDirectory /> : activePage === 'Stock History' ? <StockHistory /> : activePage === 'Alerts' ? <Alerts notificationsEnabled={notificationsEnabled} onToggleNotifications={() => setNotificationsEnabled((prev) => !prev)} showSidebarCount={showSidebarCount} onToggleSidebarCount={() => setShowSidebarCount((prev) => !prev)} /> : activePage === 'Reports' ? <ReportsDirectory /> : activePage === 'User Management' ? <UserManagement /> : <div className="content">
           <div className="welcome-row">
             <p>Here&apos;s what&apos;s happening today.</p>
             <div className="quick-actions"><button className="secondary-button" type="button" onClick={() => setActivePage('Purchases')}><Icon name="plus" size={18} /> New purchase</button><button className="primary-button" type="button" onClick={() => setActivePage('Sales & Billing')}><Icon name="cart" size={19} /> Create sale</button></div>
