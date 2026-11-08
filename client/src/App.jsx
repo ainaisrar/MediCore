@@ -552,7 +552,7 @@ function App() {
         {activePage === 'Medicines' ? <MedicineCatalog /> : activePage === 'Inventory' ? <InventoryStock /> : activePage === 'Suppliers' ? <SupplierDirectory /> : activePage === 'Purchases' ? <PurchaseOrders /> : activePage === 'Sales & Billing' ? <SalesBilling /> : activePage === 'Customers' ? <CustomerDirectory /> : activePage === 'Stock History' ? <StockHistory /> : activePage === 'Alerts' ? <Alerts notificationsEnabled={notificationsEnabled} onToggleNotifications={() => setNotificationsEnabled((prev) => !prev)} showSidebarCount={showSidebarCount} onToggleSidebarCount={() => setShowSidebarCount((prev) => !prev)} /> : <div className="content">
           <div className="welcome-row">
             <p>Here&apos;s what&apos;s happening today.</p>
-            <div className="quick-actions"><button className="secondary-button"><Icon name="plus" size={18} /> New purchase</button><button className="primary-button"><Icon name="cart" size={19} /> Create sale</button></div>
+            <div className="quick-actions"><button className="secondary-button" type="button" onClick={() => setActivePage('Purchases')}><Icon name="plus" size={18} /> New purchase</button><button className="primary-button" type="button" onClick={() => setActivePage('Sales & Billing')}><Icon name="cart" size={19} /> Create sale</button></div>
           </div>
 
           <section className="metrics-grid" aria-label="Pharmacy summary">
@@ -575,7 +575,7 @@ function App() {
 
           <section className="secondary-grid">
             <article className="panel activity-panel"><div className="panel-header"><div><h2>Recent sales</h2><p>Latest invoices generated</p></div><a href="#sales" onClick={(event) => { event.preventDefault(); setActivePage('Sales & Billing') }}>All sales <Icon name="arrow" size={16} /></a></div><EmptyRows type="sales" /></article>
-            <article className="panel activity-panel"><div className="panel-header"><div><h2>Recent stock activity</h2><p>Latest inventory movements</p></div><a href="#stock-history">View history <Icon name="arrow" size={16} /></a></div><EmptyRows type="stock" /></article>
+            <article className="panel activity-panel"><div className="panel-header"><div><h2>Recent stock activity</h2><p>Latest inventory movements</p></div><a href="#stock-history" onClick={(event) => { event.preventDefault(); setActivePage('Stock History') }}>View history <Icon name="arrow" size={16} /></a></div><EmptyRows type="stock" /></article>
           </section>
         </div>}
       </main>
