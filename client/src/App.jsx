@@ -291,6 +291,46 @@ function PurchaseOrders() {
   )
 }
 
+function StockHistory() {
+  const [query, setQuery] = useState('')
+  const stockHistory = []
+  const filteredHistory = stockHistory.filter((item) =>
+    Object.values(item).some((value) => String(value).toLowerCase().includes(query.toLowerCase())),
+  )
+
+  return (
+    <div className="history-content">
+      <section className="history-panel">
+        <div className="history-heading">
+          <div>
+            <h2>Stock movement history</h2>
+            <p>Audit trail of all medicine batch adjustments, receipts, and sales.</p>
+          </div>
+          <button className="primary-button"><Icon name="download" size={18} /> Export log</button>
+        </div>
+        <div className="history-toolbar">
+          <label className="catalog-search"><Icon name="search" size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search stock movement records..." aria-label="Search stock movement records" /></label>
+          <button className="catalog-button"><Icon name="filter" size={19} /> Filters</button>
+          <button className="catalog-button"><Icon name="download" size={18} /> Export</button>
+        </div>
+        <div className="history-table-wrap">
+          <table className="medicine-table history-table">
+            <thead><tr><th>Date &amp; Time</th><th>Medicine</th><th>Batch</th><th>Type</th><th>Quantity</th><th>Previous</th><th>New Balance</th><th>Reference</th></tr></thead>
+            <tbody>{filteredHistory.map((item) => <tr key={item.id}>
+              <td>{item.date}</td><td><strong>{item.medicine}</strong></td><td>{item.batch}</td><td>{item.type}</td><td>{item.quantity}</td><td>{item.previous}</td><td>{item.balance}</td><td>{item.reference}</td>
+            </tr>)}</tbody>
+          </table>
+          {filteredHistory.length === 0 && <div className="history-empty-space" aria-label="No stock history records" />}
+        </div>
+        <div className="medicine-footer">
+          <span>Showing {filteredHistory.length} of {stockHistory.length} records</span>
+          <div className="pagination"><button disabled>Previous</button><button className="current-page">1</button><button disabled>Next</button></div>
+        </div>
+      </section>
+    </div>
+  )
+}
+
 function App() {
   const [signedIn, setSignedIn] = useState(false)
   const [activePage, setActivePage] = useState('Dashboard')
@@ -320,7 +360,7 @@ function App() {
 
       <main className="dashboard-main">
         <header className="topbar">
-          <div className="page-title"><h1>{activePage === 'Medicines' ? 'Medicine &amp; Batch Management' : activePage === 'Inventory' ? 'Inventory & Stock' : activePage === 'Suppliers' ? 'Suppliers' : activePage === 'Purchases' ? 'Purchases' : 'Dashboard'}</h1><span>{activePage === 'Medicines' || activePage === 'Inventory' || activePage === 'Suppliers' || activePage === 'Purchases' ? 'Thursday, 12 June 2025' : 'Today'}</span></div>
+          <div className="page-title"><h1>{activePage === 'Medicines' ? 'Medicine & Batch Management' : activePage === 'Inventory' ? 'Inventory & Stock' : activePage === 'Suppliers' ? 'Suppliers' : activePage === 'Purchases' ? 'Purchases' : activePage === 'Stock History' ? 'Stock Movement History' : 'Dashboard'}</h1><span>{activePage === 'Medicines' || activePage === 'Inventory' || activePage === 'Suppliers' || activePage === 'Purchases' || activePage === 'Stock History' ? 'Thursday, 12 June 2025' : 'Today'}</span></div>
           <div className="topbar-actions">
             <label className="search-box"><Icon name="search" size={20} /><input placeholder="Search records..." aria-label="Search records" /></label>
             <button className="notification-button" aria-label="Notifications"><Icon name="bell" size={21} /><i /></button>
@@ -328,7 +368,7 @@ function App() {
           </div>
         </header>
 
-        {activePage === 'Medicines' ? <MedicineCatalog /> : activePage === 'Inventory' ? <InventoryStock /> : activePage === 'Suppliers' ? <SupplierDirectory /> : activePage === 'Purchases' ? <PurchaseOrders /> : <div className="content">
+        {activePage === 'Medicines' ? <MedicineCatalog /> : activePage === 'Inventory' ? <InventoryStock /> : activePage === 'Suppliers' ? <SupplierDirectory /> : activePage === 'Purchases' ? <PurchaseOrders /> : activePage === 'Stock History' ? <StockHistory /> : <div className="content">
           <div className="welcome-row">
             <p>Here&apos;s what&apos;s happening today.</p>
             <div className="quick-actions"><button className="secondary-button"><Icon name="plus" size={18} /> New purchase</button><button className="primary-button"><Icon name="cart" size={19} /> Create sale</button></div>
