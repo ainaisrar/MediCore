@@ -35,10 +35,13 @@ userSchema.pre('save', async function hashPassword() {
 
 const medicineSchema = new mongoose.Schema({
   name: { type: String, required: true },
+  brandName: { type: String, default: '' },
   genericName: { type: String, default: '' },
   category: { type: String, default: '' },
   dosage: { type: String, default: '' },
   manufacturer: { type: String, default: '' },
+  purchasePrice: { type: Number, default: 0, min: 0 },
+  sellingPrice: { type: Number, default: 0, min: 0 },
   price: { type: Number, default: 0 },
   stock: { type: Number, default: 0 },
   status: { type: String, default: 'In Stock' }
@@ -46,8 +49,10 @@ const medicineSchema = new mongoose.Schema({
 
 const medicineBatchSchema = new mongoose.Schema({
   medicine: { type: mongoose.Schema.Types.ObjectId, ref: 'Medicine', required: true },
+  supplier: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier', default: null },
   batchNumber: { type: String, required: true },
   quantity: { type: Number, default: 0, min: 0 },
+  manufacturingDate: { type: String, default: '' },
   expiryDate: { type: String, default: '' },
   purchasePrice: { type: Number, default: 0, min: 0 },
   sellingPrice: { type: Number, default: 0, min: 0 },

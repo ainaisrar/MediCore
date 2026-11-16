@@ -202,17 +202,67 @@ function SignIn({ onSignIn }) {
 }
 
 
-function MetricCard({ icon, label, tone }) {
+function MetricCard({ icon, label, tone, value, detail }) {
   return (
     <article className="metric-card">
       <div className={`metric-icon ${tone}`}><Icon name={icon} size={23} /></div>
       <div className="metric-copy">
         <span>{label}</span>
-        <div className="empty-value" />
-        <small><i />&nbsp;</small>
+        <strong className="metric-value">{value}</strong>
+        <small>{detail}</small>
       </div>
     </article>
   )
+}
+
+function DashboardOverview({ onNavigate }) {
+  const [medicines, setMedicines] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [now] = useState(() => Date.now())
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/medicines`)
+      .then((response) => readApiResponse(response).then((data) => {
+        if (!response.ok) throw new Error(data.error || 'Unable to load dashboard inventory')
+        setMedicines(data)
+      }))
+      .catch(() => setMedicines([]))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const batches = medicines.flatMap((medicine) => medicine.batches || [])
+  const availableStock = batches.reduce((total, batch) => total + (Number(batch.quantity) || 0), 0)
+  const lowStock = batches.filter((batch) => Number(batch.quantity) > 0 && Number(batch.quantity) <= 10).length
+  const expiredOrExpiring = batches.filter((batch) => batch.expiryDate && new Date(batch.expiryDate) <= new Date(now + 30 * 24 * 60 * 60 * 1000)).length
+  const inStockRate = batches.length ? Math.round((batches.filter((batch) => Number(batch.quantity) > 0).length / batches.length) * 100) : 0
+  const value = (number) => loading ? '...' : number.toLocaleString()
+
+  return <div className="content">
+    <div className="welcome-row">
+      <p>Here&apos;s what&apos;s happening today.</p>
+      <div className="quick-actions"><button className="secondary-button" type="button" onClick={() => onNavigate('Purchases')}><Icon name="plus" size={18} /> New purchase</button><button className="primary-button" type="button" onClick={() => onNavigate('Sales & Billing')}><Icon name="cart" size={19} /> Create sale</button></div>
+    </div>
+    <section className="metrics-grid" aria-label="Pharmacy summary">
+      <MetricCard icon="pill" label="Total medicines" tone="blue" value={value(medicines.length)} detail={`${batches.length.toLocaleString()} batches`} />
+      <MetricCard icon="cube" label="Available stock" tone="green" value={value(availableStock)} detail="Units across batches" />
+      <MetricCard icon="report" label="In-stock batches" tone="purple" value={loading ? '...' : `${inStockRate}%`} detail={`${batches.filter((batch) => Number(batch.quantity) > 0).length} active batches`} />
+      <MetricCard icon="bell" label="Needs attention" tone="orange" value={value(lowStock + expiredOrExpiring)} detail={`${lowStock} low stock · ${expiredOrExpiring} expiring`} />
+    </section>
+    <section className="primary-grid">
+      <article className="panel sales-panel">
+        <div className="panel-header"><div><h2>Inventory overview</h2><p>Live stock health across medicine batches</p></div><a href="#medicines" onClick={(event) => { event.preventDefault(); onNavigate('Medicines') }}>Manage medicines <Icon name="arrow" size={16} /></a></div>
+        <div className="dashboard-inventory-summary"><strong>{value(availableStock)}</strong><span>units currently available</span><div className="inventory-progress"><i style={{ width: `${inStockRate}%` }} /></div><small>{loading ? 'Loading inventory...' : `${inStockRate}% of batches have available stock`}</small></div>
+      </article>
+      <article className="panel alerts-panel">
+        <div className="panel-header"><div><h2>Inventory alerts</h2><p>Items requiring action</p></div><a href="#medicines" onClick={(event) => { event.preventDefault(); onNavigate('Medicines') }}>View medicines <Icon name="arrow" size={16} /></a></div>
+        {loading ? <div className="alert-empty">Loading alerts...</div> : lowStock + expiredOrExpiring === 0 ? <div className="alert-empty"><div className="empty-state-icon"><Icon name="bell" size={23} /></div><strong>No alerts</strong><span>All medicine batches are healthy.</span></div> : <div className="dashboard-alert-list"><span><Icon name="warning" size={17} /> {lowStock} low-stock batch{lowStock === 1 ? '' : 'es'}</span><span><Icon name="warning" size={17} /> {expiredOrExpiring} expiring within 30 days</span></div>}
+      </article>
+    </section>
+    <section className="secondary-grid">
+      <article className="panel activity-panel"><div className="panel-header"><div><h2>Recent batches</h2><p>Latest batch records</p></div><a href="#medicines" onClick={(event) => { event.preventDefault(); onNavigate('Medicines') }}>View all <Icon name="arrow" size={16} /></a></div>{batches.length ? <div className="dashboard-batch-list">{batches.slice(0, 5).map((batch) => <div key={batch._id}><strong>{batch.batchNumber}</strong><span>{batch.quantity} units · {batch.expiryDate || 'No expiry date'}</span></div>)}</div> : <EmptyRows type="stock" />}</article>
+      <article className="panel activity-panel"><div className="panel-header"><div><h2>Catalog summary</h2><p>Medicine records by category</p></div><a href="#medicines" onClick={(event) => { event.preventDefault(); onNavigate('Medicines') }}>View catalog <Icon name="arrow" size={16} /></a></div>{medicines.length ? <div className="dashboard-batch-list">{[...new Set(medicines.map((medicine) => medicine.category || 'Uncategorized'))].slice(0, 5).map((item) => <div key={item}><strong>{item}</strong><span>{medicines.filter((medicine) => (medicine.category || 'Uncategorized') === item).length} medicines</span></div>)}</div> : <EmptyRows type="stock" />}</article>
+    </section>
+  </div>
 }
 
 function EmptyRows({ type }) {
@@ -229,6 +279,7 @@ function MedicineCatalog() {
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('')
   const [medicines, setMedicines] = useState([])
+  const [suppliers, setSuppliers] = useState([])
   const [modal, setModal] = useState(null)
   const [form, setForm] = useState({})
   const [error, setError] = useState('')
@@ -248,7 +299,15 @@ function MedicineCatalog() {
     }
   }
 
-  useEffect(() => { loadMedicines() }, [])
+  useEffect(() => {
+    loadMedicines()
+    fetch(`${API_BASE}/api/suppliers`)
+      .then((response) => readApiResponse(response).then((data) => {
+        if (!response.ok) throw new Error(data.error || 'Unable to load suppliers')
+        setSuppliers(data)
+      }))
+      .catch((err) => setError(err.message))
+  }, [])
 
   const categories = [...new Set(medicines.map((medicine) => medicine.category).filter(Boolean))].sort()
   const filteredMedicines = medicines.filter((medicine) => {
@@ -257,12 +316,12 @@ function MedicineCatalog() {
   })
   const openMedicine = (medicine = {}) => {
     setError('')
-    setForm({ name: '', genericName: '', category: '', dosage: '', manufacturer: '', status: 'In Stock', ...medicine })
+    setForm({ name: '', genericName: '', category: '', dosage: '', manufacturer: '', purchasePrice: 0, sellingPrice: 0, status: 'In Stock', ...medicine, brandName: medicine.brandName || medicine.name || '' })
     setModal({ type: 'medicine', item: medicine._id ? medicine : null })
   }
   const openBatch = (medicine, batch = {}) => {
     setError('')
-    setForm({ medicineId: medicine._id, batchNumber: '', quantity: 0, expiryDate: '', purchasePrice: 0, sellingPrice: 0, location: '', ...batch })
+    setForm({ medicineId: medicine._id, batchNumber: '', quantity: 0, manufacturingDate: '', expiryDate: '', purchasePrice: 0, sellingPrice: 0, location: '', ...batch, supplier: batch.supplier?._id || batch.supplier || '' })
     setModal({ type: 'batch', item: batch._id ? batch : null, medicine })
   }
   const save = async (event) => {
@@ -296,8 +355,8 @@ function MedicineCatalog() {
     }
   }
   const exportCsv = () => {
-    const rows = [['Medicine', 'Generic', 'Category', 'Manufacturer', 'Batch', 'Stock', 'Expiry', 'Price']]
-    filteredMedicines.forEach((medicine) => (medicine.batches || []).forEach((batch) => rows.push([medicine.name, medicine.genericName, medicine.category, medicine.manufacturer, batch.batchNumber, batch.quantity, batch.expiryDate, batch.sellingPrice])))
+    const rows = [['Brand', 'Generic', 'Category', 'Manufacturer', 'Batch', 'Supplier', 'Quantity', 'Manufactured', 'Expiry', 'Purchase price', 'Selling price']]
+    filteredMedicines.forEach((medicine) => (medicine.batches || []).forEach((batch) => rows.push([medicine.brandName || medicine.name, medicine.genericName, medicine.category, medicine.manufacturer, batch.batchNumber, batch.supplier?.name || '', batch.quantity, batch.manufacturingDate, batch.expiryDate, batch.purchasePrice, batch.sellingPrice])))
     const csv = rows.map((row) => row.map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\n')
     const link = document.createElement('a')
     link.href = `data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`
@@ -322,10 +381,10 @@ function MedicineCatalog() {
         </div>
         <div className="medicine-table-wrap">
           <table className="medicine-table">
-            <thead><tr><th>Medicine</th><th>Generic</th><th>Category</th><th>Manufacturer</th><th>Batch</th><th>Stock</th><th>Expiry</th><th>Price</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Brand</th><th>Generic</th><th>Category</th><th>Manufacturer</th><th>Batch</th><th>Supplier</th><th>Quantity</th><th>Manufactured</th><th>Expiry</th><th>Prices</th><th>Actions</th></tr></thead>
             <tbody>{filteredMedicines.flatMap((medicine) => (medicine.batches?.length ? medicine.batches : [null]).map((batch) => <tr key={`${medicine._id}-${batch?._id || 'empty'}`}>
-              <td><strong>{medicine.name}</strong></td><td>{medicine.genericName || '-'}</td><td>{medicine.category || '-'}</td><td>{medicine.manufacturer || '-'}</td><td>{batch?.batchNumber || 'No batches'}</td><td>{batch?.quantity ?? 0}</td><td>{batch?.expiryDate || '-'}</td><td>{batch ? `Rs. ${batch.sellingPrice}` : '-'}</td>
-              <td className="table-actions"><button type="button" onClick={() => openMedicine(medicine)}>Edit</button>{batch ? <><button type="button" onClick={() => openBatch(medicine, batch)}>Batch</button><button type="button" onClick={() => remove(`/api/batches/${batch._id}`, 'Delete this batch?')}>Delete batch</button></> : <button type="button" onClick={() => openBatch(medicine)}>Add batch</button>}<button type="button" onClick={() => remove(`/api/medicines/${medicine._id}`, 'Delete this medicine and all its batches?')}>Delete</button></td>
+              <td><strong>{medicine.brandName || medicine.name}</strong></td><td>{medicine.genericName || '-'}</td><td>{medicine.category || '-'}</td><td>{medicine.manufacturer || '-'}</td><td>{batch?.batchNumber || 'No batches'}</td><td>{batch?.supplier?.name || '-'}</td><td>{batch?.quantity ?? 0}</td><td>{batch?.manufacturingDate || '-'}</td><td>{batch?.expiryDate || '-'}</td><td>{batch ? `Rs. ${batch.purchasePrice} / ${batch.sellingPrice}` : medicine.sellingPrice ? `Rs. ${medicine.sellingPrice}` : '-'}</td>
+              <td className="table-actions"><button type="button" onClick={() => openMedicine(medicine)}>Edit</button>{batch ? <><button type="button" onClick={() => openBatch(medicine, batch)}>View / edit</button><button type="button" onClick={() => remove(`/api/batches/${batch._id}`, 'Delete this batch?')}>Delete batch</button></> : <button type="button" onClick={() => openBatch(medicine)}>Add batch</button>}<button type="button" onClick={() => remove(`/api/medicines/${medicine._id}`, 'Delete this medicine and all its batches?')}>Delete</button></td>
             </tr>))}</tbody>
           </table>
           {loading && <div className="catalog-empty">Loading medicines...</div>}
@@ -342,10 +401,11 @@ function MedicineCatalog() {
           <div className="modal-header"><div><h3>{modal.type === 'batch' ? `${modal.item ? 'Edit' : 'Add'} batch` : `${modal.item ? 'Edit' : 'Add'} medicine`}</h3><p>{modal.type === 'batch' ? modal.medicine.name : 'Keep medicine details and categories up to date.'}</p></div><button className="modal-close" type="button" onClick={() => setModal(null)} aria-label="Close"><Icon name="close" size={18} /></button></div>
           <div className="modal-body medicine-form">
             {modal.type === 'medicine' ? <>
-              {['name', 'genericName', 'category', 'dosage', 'manufacturer'].map((field) => <label key={field} className="settings-field"><span>{field === 'genericName' ? 'Generic name' : field.charAt(0).toUpperCase() + field.slice(1)}</span><input required={field === 'name'} value={form[field] || ''} onChange={(event) => setForm({ ...form, [field]: event.target.value })} /></label>)}
+              {[['brandName', 'Brand name'], ['genericName', 'Generic name'], ['category', 'Category'], ['dosage', 'Dosage'], ['manufacturer', 'Manufacturer'], ['purchasePrice', 'Default purchase price'], ['sellingPrice', 'Default selling price']].map(([field, label]) => <label key={field} className="settings-field"><span>{label}</span><input type={['purchasePrice', 'sellingPrice'].includes(field) ? 'number' : 'text'} min="0" required={field === 'brandName'} value={form[field] ?? ''} onChange={(event) => setForm({ ...form, [field]: event.target.value, ...(field === 'brandName' ? { name: event.target.value } : {}) })} /></label>)}
               <label className="settings-field"><span>Status</span><select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}><option>In Stock</option><option>Low Stock</option><option>Out of Stock</option></select></label>
             </> : <>
-              {[['batchNumber', 'Batch number'], ['quantity', 'Quantity'], ['expiryDate', 'Expiry date'], ['purchasePrice', 'Purchase price'], ['sellingPrice', 'Selling price'], ['location', 'Location']].map(([field, label]) => <label key={field} className="settings-field"><span>{label}</span><input type={field === 'expiryDate' ? 'date' : ['quantity', 'purchasePrice', 'sellingPrice'].includes(field) ? 'number' : 'text'} min="0" required={field === 'batchNumber'} value={form[field] ?? ''} onChange={(event) => setForm({ ...form, [field]: event.target.value })} /></label>)}
+              <label className="settings-field"><span>Supplier</span><select value={form.supplier || ''} onChange={(event) => setForm({ ...form, supplier: event.target.value })}><option value="">No supplier</option>{suppliers.map((supplier) => <option key={supplier._id} value={supplier._id}>{supplier.name}</option>)}</select></label>
+              {[['batchNumber', 'Batch number'], ['quantity', 'Quantity'], ['manufacturingDate', 'Manufacturing date'], ['expiryDate', 'Expiry date'], ['purchasePrice', 'Purchase price'], ['sellingPrice', 'Selling price'], ['location', 'Location']].map(([field, label]) => <label key={field} className="settings-field"><span>{label}</span><input type={['manufacturingDate', 'expiryDate'].includes(field) ? 'date' : ['quantity', 'purchasePrice', 'sellingPrice'].includes(field) ? 'number' : 'text'} min="0" required={field === 'batchNumber'} value={form[field] ?? ''} onChange={(event) => setForm({ ...form, [field]: event.target.value })} /></label>)}
             </>}
             {error && <div className="login-error-message">{error}</div>}
           </div>
@@ -1210,35 +1270,7 @@ function App() {
           </div>
         )}
 
-        {activePage === 'Medicines' ? <MedicineCatalog /> : activePage === 'Inventory' ? <InventoryStock /> : activePage === 'Suppliers' ? <SupplierDirectory /> : activePage === 'Purchases' ? <PurchaseOrders /> : activePage === 'Sales & Billing' ? <SalesBilling /> : activePage === 'Customers' ? <CustomerDirectory /> : activePage === 'Stock History' ? <StockHistory /> : activePage === 'Alerts' ? <Alerts notificationsEnabled={notificationsEnabled} onToggleNotifications={() => setNotificationsEnabled((prev) => !prev)} showSidebarCount={showSidebarCount} onToggleSidebarCount={() => setShowSidebarCount((prev) => !prev)} /> : activePage === 'Reports' ? <ReportsDirectory /> : activePage === 'User Management' ? (isAdministrator ? <UserManagement /> : <div className="content"><div className="welcome-row"><p>Access restricted. Administrator access required.</p></div></div>) : <div className="content">
-          <div className="welcome-row">
-            <p>Here&apos;s what&apos;s happening today.</p>
-            <div className="quick-actions"><button className="secondary-button" type="button" onClick={() => setActivePage('Purchases')}><Icon name="plus" size={18} /> New purchase</button><button className="primary-button" type="button" onClick={() => setActivePage('Sales & Billing')}><Icon name="cart" size={19} /> Create sale</button></div>
-          </div>
-
-          <section className="metrics-grid" aria-label="Pharmacy summary">
-            <MetricCard icon="pill" label="Total medicines" tone="blue" />
-            <MetricCard icon="cube" label="Available stock" tone="green" />
-            <MetricCard icon="report" label="Today&apos;s sales" tone="purple" />
-            <MetricCard icon="bell" label="Needs attention" tone="orange" />
-          </section>
-
-          <section className="primary-grid">
-            <article className="panel sales-panel">
-              <div className="panel-header"><div><h2>Sales overview</h2><p>Revenue performance over the last 7 days</p></div><a href="#sales-report" onClick={(event) => { event.preventDefault(); setActivePage('Reports') }}>View report <Icon name="arrow" size={16} /></a></div>
-              <div className="empty-chart" aria-label="Sales chart awaiting data"><div className="chart-placeholder" /><span>No sales data yet</span></div>
-            </article>
-            <article className="panel alerts-panel">
-              <div className="panel-header"><div><h2>Inventory alerts</h2><p>Items requiring action</p></div><a href="#alerts" onClick={(event) => { event.preventDefault(); setActivePage('Alerts') }}>View all <Icon name="arrow" size={16} /></a></div>
-              <div className="alert-empty"><div className="empty-state-icon"><Icon name="bell" size={23} /></div><strong>No alerts yet</strong><span>Low-stock and expiry alerts will appear here.</span></div>
-            </article>
-          </section>
-
-          <section className="secondary-grid">
-            <article className="panel activity-panel"><div className="panel-header"><div><h2>Recent sales</h2><p>Latest invoices generated</p></div><a href="#sales" onClick={(event) => { event.preventDefault(); setActivePage('Sales & Billing') }}>All sales <Icon name="arrow" size={16} /></a></div><EmptyRows type="sales" /></article>
-            <article className="panel activity-panel"><div className="panel-header"><div><h2>Recent stock activity</h2><p>Latest inventory movements</p></div><a href="#stock-history" onClick={(event) => { event.preventDefault(); setActivePage('Stock History') }}>View history <Icon name="arrow" size={16} /></a></div><EmptyRows type="stock" /></article>
-          </section>
-        </div>}
+        {activePage === 'Medicines' ? <MedicineCatalog /> : activePage === 'Inventory' ? <InventoryStock /> : activePage === 'Suppliers' ? <SupplierDirectory /> : activePage === 'Purchases' ? <PurchaseOrders /> : activePage === 'Sales & Billing' ? <SalesBilling /> : activePage === 'Customers' ? <CustomerDirectory /> : activePage === 'Stock History' ? <StockHistory /> : activePage === 'Alerts' ? <Alerts notificationsEnabled={notificationsEnabled} onToggleNotifications={() => setNotificationsEnabled((prev) => !prev)} showSidebarCount={showSidebarCount} onToggleSidebarCount={() => setShowSidebarCount((prev) => !prev)} /> : activePage === 'Reports' ? <ReportsDirectory /> : activePage === 'User Management' ? (isAdministrator ? <UserManagement /> : <div className="content"><div className="welcome-row"><p>Access restricted. Administrator access required.</p></div></div>) : <DashboardOverview onNavigate={setActivePage} />}
       </main>
     </div>
   )

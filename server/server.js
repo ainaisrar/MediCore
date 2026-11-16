@@ -299,7 +299,7 @@ app.delete('/api/users/:id', authenticateToken, requireAdministrator, async (req
 app.get('/api/medicines', async (req, res) => {
   try {
     const medicines = await models.Medicine.find().sort({ name: 1 }).lean()
-    const batches = await models.MedicineBatch.find().sort({ expiryDate: 1 }).lean()
+    const batches = await models.MedicineBatch.find().populate('supplier', 'name').sort({ expiryDate: 1 }).lean()
     const data = medicines.map((medicine) => ({
       ...medicine,
       batches: batches.filter((batch) => String(batch.medicine) === String(medicine._id))
@@ -312,14 +312,17 @@ app.get('/api/medicines', async (req, res) => {
 
 app.post('/api/medicines', async (req, res) => {
   try {
-    const { name, genericName, category, dosage, manufacturer, status } = req.body
+    const { name, brandName, genericName, category, dosage, manufacturer, purchasePrice, sellingPrice, status } = req.body
     if (!name?.trim()) return res.status(400).json({ error: 'Medicine name is required' })
     const medicine = await models.Medicine.create({
       name: name.trim(),
+      brandName: brandName?.trim() || name.trim(),
       genericName: genericName?.trim() || '',
       category: category?.trim() || '',
       dosage: dosage?.trim() || '',
       manufacturer: manufacturer?.trim() || '',
+      purchasePrice: Number(purchasePrice) || 0,
+      sellingPrice: Number(sellingPrice) || 0,
       status: status || 'In Stock'
     })
     res.status(201).json({ ...medicine.toObject(), batches: [] })
@@ -331,15 +334,19 @@ app.post('/api/medicines', async (req, res) => {
 app.put('/api/medicines/:id', async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid medicine ID' })
-    const allowed = ['name', 'genericName', 'category', 'dosage', 'manufacturer', 'status']
+    const allowed = ['name', 'brandName', 'genericName', 'category', 'dosage', 'manufacturer', 'purchasePrice', 'sellingPrice', 'status']
     const updates = Object.fromEntries(Object.entries(req.body).filter(([key]) => allowed.includes(key)))
     if (updates.name !== undefined) {
       if (!String(updates.name).trim()) return res.status(400).json({ error: 'Medicine name is required' })
       updates.name = String(updates.name).trim()
     }
+    if (updates.brandName !== undefined) updates.brandName = String(updates.brandName).trim()
+    for (const field of ['purchasePrice', 'sellingPrice']) {
+      if (updates[field] !== undefined) updates[field] = Number(updates[field])
+    }
     const medicine = await models.Medicine.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true }).lean()
     if (!medicine) return res.status(404).json({ error: 'Medicine not found' })
-    const batches = await models.MedicineBatch.find({ medicine: medicine._id }).sort({ expiryDate: 1 }).lean()
+    const batches = await models.MedicineBatch.find({ medicine: medicine._id }).populate('supplier', 'name').sort({ expiryDate: 1 }).lean()
     res.json({ ...medicine, batches })
   } catch (error) {
     res.status(500).json({ error: error.message })
@@ -361,13 +368,15 @@ app.delete('/api/medicines/:id', async (req, res) => {
 app.post('/api/medicines/:id/batches', async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid medicine ID' })
-    const { batchNumber, quantity, expiryDate, purchasePrice, sellingPrice, location } = req.body
+    const { supplier, batchNumber, quantity, manufacturingDate, expiryDate, purchasePrice, sellingPrice, location } = req.body
     if (!batchNumber?.trim()) return res.status(400).json({ error: 'Batch number is required' })
     if (!(await models.Medicine.exists({ _id: req.params.id }))) return res.status(404).json({ error: 'Medicine not found' })
     const batch = await models.MedicineBatch.create({
       medicine: req.params.id,
+      supplier: supplier && mongoose.isValidObjectId(supplier) ? supplier : null,
       batchNumber: batchNumber.trim(),
       quantity: Number(quantity) || 0,
+      manufacturingDate: manufacturingDate || '',
       expiryDate: expiryDate || '',
       purchasePrice: Number(purchasePrice) || 0,
       sellingPrice: Number(sellingPrice) || 0,
@@ -382,7 +391,7 @@ app.post('/api/medicines/:id/batches', async (req, res) => {
 app.put('/api/batches/:id', async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid batch ID' })
-    const allowed = ['batchNumber', 'quantity', 'expiryDate', 'purchasePrice', 'sellingPrice', 'location']
+    const allowed = ['supplier', 'batchNumber', 'quantity', 'manufacturingDate', 'expiryDate', 'purchasePrice', 'sellingPrice', 'location']
     const updates = Object.fromEntries(Object.entries(req.body).filter(([key]) => allowed.includes(key)))
     if (updates.batchNumber !== undefined) {
       if (!String(updates.batchNumber).trim()) return res.status(400).json({ error: 'Batch number is required' })
@@ -390,6 +399,10 @@ app.put('/api/batches/:id', async (req, res) => {
     }
     for (const field of ['quantity', 'purchasePrice', 'sellingPrice']) {
       if (updates[field] !== undefined) updates[field] = Number(updates[field])
+    }
+    if (updates.supplier !== undefined) {
+      if (updates.supplier && !mongoose.isValidObjectId(updates.supplier)) return res.status(400).json({ error: 'Invalid supplier ID' })
+      updates.supplier = updates.supplier || null
     }
     const batch = await models.MedicineBatch.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true })
     if (!batch) return res.status(404).json({ error: 'Batch not found' })

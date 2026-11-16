@@ -150,9 +150,22 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .metric-icon.orange { color: #f19b12; background: #fff7e6; }
 .metric-copy { padding-left: 17px; }
 .metric-copy span { display: block; margin: 2px 0 13px; color: #5c6e8b; font-size: 15px; font-weight: 600; white-space: nowrap; }
+.metric-value { display: block; color: var(--ink); font-size: 25px; line-height: 1; }
+.metric-copy small { display: block; margin-top: 12px; color: #8190a7; font-size: 11px; }
 .empty-value { width: 76px; height: 19px; border-radius: 5px; background: #eef2f7; }
-.metric-copy small { display: block; width: 86px; height: 10px; margin-top: 14px; border-radius: 5px; background: #f2f5f8; }
-.metric-copy small i { display: none; }
+.dashboard-inventory-summary { display: grid; gap: 9px; padding: 28px 24px; }
+.dashboard-inventory-summary strong { color: var(--ink); font-size: 40px; }
+.dashboard-inventory-summary span, .dashboard-inventory-summary small { color: #8190a7; font-size: 13px; }
+.inventory-progress { height: 10px; overflow: hidden; margin-top: 12px; border-radius: 10px; background: #edf2f8; }
+.inventory-progress i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #2164f5, #11c995); }
+.dashboard-alert-list { display: grid; gap: 13px; padding: 28px 24px; color: #647895; font-size: 14px; }
+.dashboard-alert-list span { display: flex; align-items: center; gap: 9px; }
+.dashboard-alert-list .icon { color: #f19b12; }
+.dashboard-batch-list { display: grid; gap: 0; padding: 8px 24px; }
+.dashboard-batch-list div { display: flex; justify-content: space-between; gap: 15px; padding: 12px 0; border-bottom: 1px solid #edf1f6; }
+.dashboard-batch-list div:last-child { border-bottom: 0; }
+.dashboard-batch-list strong { color: var(--ink); font-size: 14px; }
+.dashboard-batch-list span { color: #8190a7; font-size: 12px; }
 .primary-grid, .secondary-grid { display: grid; grid-template-columns: 1.55fr 1fr; gap: 25px; margin-top: 26px; }
 .secondary-grid { grid-template-columns: 1fr 1fr; }
 .panel { min-width: 0; border: 1px solid #e3eaf3; border-radius: 18px; background: #fff; box-shadow: 0 2px 4px rgba(29, 61, 102, .035); }
