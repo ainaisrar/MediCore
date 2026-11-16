@@ -13,7 +13,18 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },
   access: { type: String, default: 'Standard' },
   status: { type: String, default: 'Active' },
-  lastLogin: { type: String, default: 'Never' }
+  lastLogin: { type: String, default: 'Never' },
+  employeeId: { type: String, default: 'ADM-001' },
+  settings: {
+    dateFormat: { type: String, default: 'DD Month YYYY' },
+    currency: { type: String, default: 'PKR (Rs.)' },
+    automaticLock: { type: Boolean, default: true },
+    sessionTimeout: { type: String, default: '30 minutes' },
+    defaultPaymentMethod: { type: String, default: 'Cash' },
+    isDarkTheme: { type: Boolean, default: false },
+    notificationsEnabled: { type: Boolean, default: true },
+    showSidebarCount: { type: Boolean, default: true }
+  }
 }, { timestamps: true })
 
 const medicineSchema = new mongoose.Schema({
@@ -135,6 +146,30 @@ async function connectDB() {
   await mongoose.connect(MONGODB_URI)
   for (const model of Object.values(models)) {
     await model.createCollection()
+  }
+  const existingAdmin = await models.User.findOne({ email: 'admin@medicore.com' })
+  if (!existingAdmin) {
+    await models.User.create({
+      name: 'Administrator',
+      role: 'Administrator',
+      email: 'admin@medicore.com',
+      phone: '+92 300 1234567',
+      password: 'admin123',
+      access: 'Full Access',
+      status: 'Active',
+      employeeId: 'ADM-001',
+      lastLogin: 'Never',
+      settings: {
+        dateFormat: 'DD Month YYYY',
+        currency: 'PKR (Rs.)',
+        automaticLock: true,
+        sessionTimeout: '30 minutes',
+        defaultPaymentMethod: 'Cash',
+        isDarkTheme: false,
+        notificationsEnabled: true,
+        showSidebarCount: true
+      }
+    })
   }
   return mongoose.connection
 }

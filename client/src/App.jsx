@@ -72,6 +72,35 @@ function SignIn({ onSignIn }) {
   const [showPassword, setShowPassword] = useState(false)
   const [keepSignedIn, setKeepSignedIn] = useState(false)
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const handleSubmit = async (event) => {
+    event.preventDefault()
+    setError('')
+    if (!email.trim() || !password) {
+      setError('Please enter both email and password.')
+      return
+    }
+    setLoading(true)
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), password })
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || 'Authentication failed')
+      }
+      onSignIn(data.token, data.user, keepSignedIn)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
     <main className="login-container">
@@ -112,11 +141,17 @@ function SignIn({ onSignIn }) {
           <div className="access-header">STAFF ACCESS</div>
           <h2>Welcome back</h2>
           <p className="form-subtitle">Sign in to manage your pharmacy operations.</p>
-          <form onSubmit={(event) => { event.preventDefault(); if (email.trim()) onSignIn(email) }}>
+          {error && (
+            <div className="login-error-message">
+              <Icon name="shield" size={16} />
+              <span>{error}</span>
+            </div>
+          )}
+          <form onSubmit={handleSubmit}>
             <div className="form-group"><label htmlFor="email">Email address</label><div className="input-wrapper"><Icon name="mail" size={22} /><input type="email" id="email" placeholder="name@pharmacy.com" value={email} onChange={(event) => setEmail(event.target.value)} required /></div></div>
-            <div className="form-group password-group"><div className="label-row"><label htmlFor="password">Password</label><a href="#forgot">Forgot password?</a></div><div className="input-wrapper"><Icon name="lock" size={22} /><input type={showPassword ? 'text' : 'password'} id="password" placeholder="Enter your password" required /><button type="button" className="show-password" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'}><Icon name="eye" size={21} /></button></div></div>
+            <div className="form-group password-group"><div className="label-row"><label htmlFor="password">Password</label><a href="#forgot">Forgot password?</a></div><div className="input-wrapper"><Icon name="lock" size={22} /><input type={showPassword ? 'text' : 'password'} id="password" placeholder="Enter your password" value={password} onChange={(event) => setPassword(event.target.value)} required /><button type="button" className="show-password" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'}><Icon name="eye" size={21} /></button></div></div>
             <label className="checkbox-label"><input type="checkbox" checked={keepSignedIn} onChange={(event) => setKeepSignedIn(event.target.checked)} /><span>Keep me signed in on this device</span></label>
-            <button type="submit" className="submit-button">Sign in to MediCore <Icon name="arrow" size={21} /></button>
+            <button type="submit" className="submit-button" disabled={loading}>{loading ? 'Signing in...' : <>Sign in to MediCore <Icon name="arrow" size={21} /></>}</button>
           </form>
           <div className="card-divider" />
           <div className="admin-link"><span>Don&apos;t have access yet?</span><a href="#permission">Ask administrator for permission <Icon name="arrow" size={18} /></a></div>
@@ -126,6 +161,7 @@ function SignIn({ onSignIn }) {
     </main>
   )
 }
+
 
 function MetricCard({ icon, label, tone }) {
   return (
@@ -577,7 +613,17 @@ function Alerts({ notificationsEnabled, onToggleNotifications, showSidebarCount,
 
 function UserManagement() {
   const [query, setQuery] = useState('')
-  const users = []
+  const [users, setUsers] = useState([])
+
+  useEffect(() => {
+    fetch('/api/users')
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) setUsers(data)
+      })
+      .catch((err) => console.error(err))
+  }, [])
+
   const filteredUsers = users.filter((user) =>
     Object.values(user).some((value) => String(value).toLowerCase().includes(query.toLowerCase())),
   )
@@ -600,8 +646,8 @@ function UserManagement() {
         <div className="users-table-wrap">
           <table className="medicine-table users-table">
             <thead><tr><th>User</th><th>Role</th><th>Email</th><th>Phone</th><th>Access Level</th><th>Last Login</th><th>Status</th></tr></thead>
-            <tbody>{filteredUsers.map((user) => <tr key={user.id || user.email || user.name}>
-              <td><strong>{user.name}</strong></td><td>{user.role}</td><td>{user.email}</td><td>{user.phone}</td><td>{user.access}</td><td>{user.lastLogin}</td><td>{user.status}</td>
+            <tbody>{filteredUsers.map((user) => <tr key={user._id || user.id || user.email || user.name}>
+              <td><strong>{user.name}</strong></td><td>{user.role}</td><td>{user.email}</td><td>{user.phone || '—'}</td><td>{user.access || 'Standard'}</td><td>{user.lastLogin || 'Never'}</td><td>{user.status || 'Active'}</td>
             </tr>)}</tbody>
           </table>
           {filteredUsers.length === 0 && <div className="users-empty-space" aria-label="No user records" />}
@@ -615,13 +661,14 @@ function UserManagement() {
   )
 }
 
+
 function App() {
   const [signedIn, setSignedIn] = useState(false)
+  const [currentUser, setCurrentUser] = useState(null)
   const [activePage, setActivePage] = useState('Dashboard')
   const [notificationsEnabled, setNotificationsEnabled] = useState(true)
   const [showSidebarCount, setShowSidebarCount] = useState(true)
   const [currentDate] = useState(() => new Date())
-  const [userEmail, setUserEmail] = useState('')
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false)
@@ -631,9 +678,49 @@ function App() {
   const [sessionTimeout, setSessionTimeout] = useState('30 minutes')
   const [paymentMethod, setPaymentMethod] = useState('Cash')
   const [isDarkTheme, setIsDarkTheme] = useState(false)
+  const [profileNameInput, setProfileNameInput] = useState('')
+  const [profilePhoneInput, setProfilePhoneInput] = useState('')
+  const [isSavingSettings, setIsSavingSettings] = useState(false)
+  const [isSavingProfile, setIsSavingProfile] = useState(false)
   const profileMenuRef = useRef(null)
-  const userName = getDisplayName(userEmail)
-  const userInitials = getInitials(userName)
+
+  const applyUserData = (user) => {
+    setCurrentUser(user)
+    setProfileNameInput(user.name || '')
+    setProfilePhoneInput(user.phone || '')
+    if (user.settings) {
+      if (user.settings.dateFormat) setDateFormat(user.settings.dateFormat)
+      if (user.settings.currency) setCurrency(user.settings.currency)
+      if (user.settings.automaticLock !== undefined) setAutomaticLock(user.settings.automaticLock)
+      if (user.settings.sessionTimeout) setSessionTimeout(user.settings.sessionTimeout)
+      if (user.settings.defaultPaymentMethod) setPaymentMethod(user.settings.defaultPaymentMethod)
+      if (user.settings.isDarkTheme !== undefined) setIsDarkTheme(user.settings.isDarkTheme)
+      if (user.settings.notificationsEnabled !== undefined) setNotificationsEnabled(user.settings.notificationsEnabled)
+      if (user.settings.showSidebarCount !== undefined) setShowSidebarCount(user.settings.showSidebarCount)
+    }
+  }
+
+  useEffect(() => {
+    const token = localStorage.getItem('medicore_token') || sessionStorage.getItem('medicore_token')
+    if (token) {
+      fetch('/api/auth/me', {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+        .then((res) => {
+          if (!res.ok) throw new Error('Unauthorized')
+          return res.json()
+        })
+        .then((user) => {
+          applyUserData(user)
+          setSignedIn(true)
+        })
+        .catch(() => {
+          localStorage.removeItem('medicore_token')
+          sessionStorage.removeItem('medicore_token')
+          setSignedIn(false)
+        })
+    }
+  }, [])
 
   useEffect(() => {
     if (!isProfileMenuOpen) return undefined
@@ -658,9 +745,101 @@ function App() {
     }
   }, [isProfileMenuOpen])
 
-  if (!signedIn) {
-    return <SignIn onSignIn={(email) => { setUserEmail(email); setSignedIn(true) }} />
+  const handleSignIn = (token, user, keepSignedIn) => {
+    if (keepSignedIn) {
+      localStorage.setItem('medicore_token', token)
+    } else {
+      sessionStorage.setItem('medicore_token', token)
+    }
+    applyUserData(user)
+    setSignedIn(true)
   }
+
+  const handleSignOut = () => {
+    localStorage.removeItem('medicore_token')
+    sessionStorage.removeItem('medicore_token')
+    setSignedIn(false)
+    setCurrentUser(null)
+    setActivePage('Dashboard')
+  }
+
+  const handleSaveProfile = async () => {
+    setIsSavingProfile(true)
+    try {
+      const token = localStorage.getItem('medicore_token') || sessionStorage.getItem('medicore_token')
+      const res = await fetch('/api/auth/profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ name: profileNameInput, phone: profilePhoneInput })
+      })
+      const data = await res.json()
+      if (res.ok && data.user) {
+        applyUserData(data.user)
+      }
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setIsSavingProfile(false)
+      setIsProfileModalOpen(false)
+    }
+  }
+
+  const handleSaveSettings = async () => {
+    setIsSavingSettings(true)
+    try {
+      const token = localStorage.getItem('medicore_token') || sessionStorage.getItem('medicore_token')
+      const updatedSettings = {
+        dateFormat,
+        currency,
+        automaticLock,
+        sessionTimeout,
+        defaultPaymentMethod: paymentMethod,
+        isDarkTheme,
+        notificationsEnabled,
+        showSidebarCount
+      }
+      const res = await fetch('/api/auth/settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ settings: updatedSettings })
+      })
+      const data = await res.json()
+      if (res.ok && data.user) {
+        applyUserData(data.user)
+      }
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setIsSavingSettings(false)
+      setIsSettingsModalOpen(false)
+    }
+  }
+
+  if (!signedIn) {
+    return <SignIn onSignIn={handleSignIn} />
+  }
+
+  const isAdministrator = currentUser?.role === 'Administrator'
+  const visibleNavigation = navigation.filter(([, label]) => {
+    if (label === 'User Management') {
+      return isAdministrator
+    }
+    return true
+  })
+
+  const userName = currentUser?.name || 'Administrator'
+  const userEmail = currentUser?.email || 'admin@medicore.com'
+  const userRole = currentUser?.role || 'Staff'
+  const userInitials = getInitials(userName)
+  const employeeId = currentUser?.employeeId || 'ADM-001'
+  const lastLogin = currentUser?.lastLogin || 'Never'
+  const userStatus = currentUser?.status || 'Active'
 
   return (
     <div className={isDarkTheme ? 'dashboard-app dark-theme' : 'dashboard-app'}>
@@ -671,14 +850,14 @@ function App() {
         </div>
 
         <nav className="navigation" aria-label="Main navigation">
-          {navigation.map(([icon, label]) => (
+          {visibleNavigation.map(([icon, label]) => (
             <a className={activePage === label ? 'nav-item active' : 'nav-item'} href={`#${label.toLowerCase().replaceAll(' ', '-')}`} onClick={(event) => { event.preventDefault(); setActivePage(label) }} key={label}>
               <Icon name={icon} /><span>{label}</span>{label === 'Alerts' && showSidebarCount && <b className="alert-count">0</b>}
             </a>
           ))}
         </nav>
 
-        <button className="sign-out" type="button" onClick={() => setSignedIn(false)}><Icon name="arrow" /><span>Sign out</span></button>
+        <button className="sign-out" type="button" onClick={handleSignOut}><Icon name="arrow" /><span>Sign out</span></button>
       </aside>
 
       <main className="dashboard-main">
@@ -690,7 +869,7 @@ function App() {
             <div className="profile-menu-wrapper" ref={profileMenuRef}>
               <button className="profile-button" type="button" aria-expanded={isProfileMenuOpen} aria-haspopup="menu" onClick={() => setIsProfileMenuOpen((isOpen) => !isOpen)}>
                 <span className="avatar">{userInitials}</span>
-                <span className="profile-copy"><strong>{userName}</strong><small>Pharmacy account</small></span>
+                <span className="profile-copy"><strong>{userName}</strong><small>{userRole}</small></span>
                 <Icon name="chevron" size={17} />
               </button>
               {isProfileMenuOpen && (
@@ -701,7 +880,7 @@ function App() {
                       <strong>{userName}</strong>
                       <span>{userEmail}</span>
                     </div>
-                    <span className="profile-role"><Icon name="shield" size={14} /> ADMINISTRATOR</span>
+                    <span className="profile-role"><Icon name="shield" size={14} /> {userRole.toUpperCase()}</span>
                   </div>
                   <div className="profile-menu-items">
                     <button type="button" role="menuitem" onClick={() => { setIsProfileMenuOpen(false); setIsProfileModalOpen(true) }}><Icon name="user" size={22} />My profile</button>
@@ -728,20 +907,21 @@ function App() {
                   <span className="profile-modal-avatar">{userInitials}</span>
                   <div>
                     <h3>{userName}</h3>
-                    <div className="profile-modal-status"><span className="profile-role"><Icon name="shield" size={14} /> ADMINISTRATOR</span><span><i /> Active</span></div>
+                    <div className="profile-modal-status"><span className="profile-role"><Icon name="shield" size={14} /> {userRole.toUpperCase()}</span><span><i /> {userStatus}</span></div>
                   </div>
                 </div>
               </div>
               <div className="profile-modal-body">
-                <label><span>FULL NAME</span><input value={userName} readOnly /></label>
-                <label><span>EMAIL ADDRESS</span><input value={userEmail} readOnly /></label>
-                <label><span>EMPLOYEE ID</span><input value="ADM-001" readOnly disabled /></label>
-                <label><span>ROLE</span><input value="Administrator" readOnly disabled /></label>
-                <label><span>LAST LOGIN</span><input value="Today, 10:42 AM" readOnly disabled /></label>
+                <label><span>FULL NAME</span><input value={profileNameInput} onChange={(event) => setProfileNameInput(event.target.value)} /></label>
+                <label><span>EMAIL ADDRESS</span><input value={userEmail} readOnly disabled /></label>
+                <label><span>PHONE NUMBER</span><input value={profilePhoneInput} onChange={(event) => setProfilePhoneInput(event.target.value)} placeholder="+92 300 0000000" /></label>
+                <label><span>EMPLOYEE ID</span><input value={employeeId} readOnly disabled /></label>
+                <label><span>ROLE</span><input value={userRole} readOnly disabled /></label>
+                <label><span>LAST LOGIN</span><input value={lastLogin} readOnly disabled /></label>
               </div>
               <div className="profile-modal-footer">
                 <button className="secondary-button" type="button" onClick={() => setIsProfileModalOpen(false)}>Cancel</button>
-                <button className="primary-button" type="button" onClick={() => setIsProfileModalOpen(false)}>Save changes</button>
+                <button className="primary-button" type="button" disabled={isSavingProfile} onClick={handleSaveProfile}>{isSavingProfile ? 'Saving...' : 'Save changes'}</button>
               </div>
             </div>
           </div>
@@ -769,13 +949,13 @@ function App() {
               </div>
               <div className="profile-modal-footer">
                 <button className="secondary-button" type="button" onClick={() => setIsSettingsModalOpen(false)}>Cancel</button>
-                <button className="primary-button" type="button" onClick={() => setIsSettingsModalOpen(false)}>Save changes</button>
+                <button className="primary-button" type="button" disabled={isSavingSettings} onClick={handleSaveSettings}>{isSavingSettings ? 'Saving...' : 'Save changes'}</button>
               </div>
             </div>
           </div>
         )}
 
-        {activePage === 'Medicines' ? <MedicineCatalog /> : activePage === 'Inventory' ? <InventoryStock /> : activePage === 'Suppliers' ? <SupplierDirectory /> : activePage === 'Purchases' ? <PurchaseOrders /> : activePage === 'Sales & Billing' ? <SalesBilling /> : activePage === 'Customers' ? <CustomerDirectory /> : activePage === 'Stock History' ? <StockHistory /> : activePage === 'Alerts' ? <Alerts notificationsEnabled={notificationsEnabled} onToggleNotifications={() => setNotificationsEnabled((prev) => !prev)} showSidebarCount={showSidebarCount} onToggleSidebarCount={() => setShowSidebarCount((prev) => !prev)} /> : activePage === 'Reports' ? <ReportsDirectory /> : activePage === 'User Management' ? <UserManagement /> : <div className="content">
+        {activePage === 'Medicines' ? <MedicineCatalog /> : activePage === 'Inventory' ? <InventoryStock /> : activePage === 'Suppliers' ? <SupplierDirectory /> : activePage === 'Purchases' ? <PurchaseOrders /> : activePage === 'Sales & Billing' ? <SalesBilling /> : activePage === 'Customers' ? <CustomerDirectory /> : activePage === 'Stock History' ? <StockHistory /> : activePage === 'Alerts' ? <Alerts notificationsEnabled={notificationsEnabled} onToggleNotifications={() => setNotificationsEnabled((prev) => !prev)} showSidebarCount={showSidebarCount} onToggleSidebarCount={() => setShowSidebarCount((prev) => !prev)} /> : activePage === 'Reports' ? <ReportsDirectory /> : activePage === 'User Management' ? (isAdministrator ? <UserManagement /> : <div className="content"><div className="welcome-row"><p>Access restricted. Administrator access required.</p></div></div>) : <div className="content">
           <div className="welcome-row">
             <p>Here&apos;s what&apos;s happening today.</p>
             <div className="quick-actions"><button className="secondary-button" type="button" onClick={() => setActivePage('Purchases')}><Icon name="plus" size={18} /> New purchase</button><button className="primary-button" type="button" onClick={() => setActivePage('Sales & Billing')}><Icon name="cart" size={19} /> Create sale</button></div>
@@ -808,5 +988,6 @@ function App() {
     </div>
   )
 }
+
 
 export default App
