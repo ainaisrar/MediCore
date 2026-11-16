@@ -181,6 +181,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .catalog-search input { width: 100%; border: 0; outline: 0; color: var(--ink); background: transparent; font-size: 14px; }
 .catalog-search input::placeholder { color: #98a5b6; }
 .catalog-button { display: flex; align-items: center; gap: 9px; height: 45px; padding: 0 18px; border: 1px solid #e0e8f2; border-radius: 13px; color: #536884; background: #fff; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.category-filter { min-width: 150px; }
 .medicine-table-wrap { overflow-x: auto; }
 .medicine-table { width: 100%; min-width: 1000px; border-collapse: collapse; }
 .medicine-table th, .medicine-table td { height: 59px; padding: 0 23px; border-bottom: 1px solid #edf1f6; text-align: left; white-space: nowrap; }
@@ -188,7 +189,13 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .medicine-table td { color: #647895; font-size: 15px; }
 .medicine-table td strong { color: #172945; font-size: 15px; }
 .medicine-table tbody tr:last-child td { border-bottom: 0; }
+.table-actions { display: flex; align-items: center; gap: 7px; }
+.table-actions button { padding: 6px 8px; border: 1px solid #dfe7f1; border-radius: 7px; color: #536884; background: #fff; font-size: 12px; cursor: pointer; }
+.table-actions button:hover { color: var(--blue); border-color: #b9cdf5; }
 .catalog-empty { padding: 50px; color: #8392a7; text-align: center; }
+.catalog-error { padding: 12px 23px; color: #b42318; background: #fff1f0; font-size: 13px; }
+.medicine-form { grid-template-columns: 1fr 1fr; }
+.medicine-form .login-error-message { grid-column: 1 / -1; }
 .medicine-footer { display: flex; align-items: center; justify-content: space-between; padding: 18px 23px; color: #7890ae; font-size: 13px; }
 .pagination { display: flex; gap: 9px; }
 .pagination button { height: 34px; padding: 0 14px; border: 1px solid #e0e8f2; border-radius: 11px; color: #7185a3; background: #fff; cursor: pointer; }
@@ -428,6 +435,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 }
 @media (max-width: 500px) {
   .metrics-grid { grid-template-columns: 1fr; }
+  .medicine-form { grid-template-columns: 1fr; }
   .quick-actions { width: 100%; }
   .secondary-button, .primary-button { flex: 1; justify-content: center; padding: 0 8px; font-size: 13px; }
   .profile-button { display: none; }

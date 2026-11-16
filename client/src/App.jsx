@@ -225,13 +225,85 @@ function EmptyRows({ type }) {
   )
 }
 
-const medicines = []
-
 function MedicineCatalog() {
   const [query, setQuery] = useState('')
-  const filteredMedicines = medicines.filter((medicine) =>
-    Object.values(medicine).some((value) => String(value).toLowerCase().includes(query.toLowerCase())),
-  )
+  const [category, setCategory] = useState('')
+  const [medicines, setMedicines] = useState([])
+  const [modal, setModal] = useState(null)
+  const [form, setForm] = useState({})
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  const loadMedicines = async () => {
+    setLoading(true)
+    try {
+      const response = await fetch(`${API_BASE}/api/medicines`)
+      const data = await readApiResponse(response)
+      if (!response.ok) throw new Error(data.error || 'Unable to load medicines')
+      setMedicines(data)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { loadMedicines() }, [])
+
+  const categories = [...new Set(medicines.map((medicine) => medicine.category).filter(Boolean))].sort()
+  const filteredMedicines = medicines.filter((medicine) => {
+    const matchesQuery = Object.values(medicine).some((value) => typeof value !== 'object' && String(value).toLowerCase().includes(query.toLowerCase()))
+    return matchesQuery && (!category || medicine.category === category)
+  })
+  const openMedicine = (medicine = {}) => {
+    setError('')
+    setForm({ name: '', genericName: '', category: '', dosage: '', manufacturer: '', status: 'In Stock', ...medicine })
+    setModal({ type: 'medicine', item: medicine._id ? medicine : null })
+  }
+  const openBatch = (medicine, batch = {}) => {
+    setError('')
+    setForm({ medicineId: medicine._id, batchNumber: '', quantity: 0, expiryDate: '', purchasePrice: 0, sellingPrice: 0, location: '', ...batch })
+    setModal({ type: 'batch', item: batch._id ? batch : null, medicine })
+  }
+  const save = async (event) => {
+    event.preventDefault()
+    setError('')
+    try {
+      const isBatch = modal.type === 'batch'
+      const url = isBatch
+        ? `${API_BASE}${modal.item ? `/api/batches/${modal.item._id}` : `/api/medicines/${form.medicineId}/batches`}`
+        : `${API_BASE}/api/medicines${modal.item ? `/${modal.item._id}` : ''}`
+      const payload = { ...form }
+      delete payload.medicineId
+      const response = await fetch(url, { method: modal.item ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      const data = await readApiResponse(response)
+      if (!response.ok) throw new Error(data.error || 'Unable to save record')
+      setModal(null)
+      await loadMedicines()
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+  const remove = async (url, message) => {
+    if (!window.confirm(message)) return
+    try {
+      const response = await fetch(`${API_BASE}${url}`, { method: 'DELETE' })
+      const data = await readApiResponse(response)
+      if (!response.ok) throw new Error(data.error || 'Unable to delete record')
+      await loadMedicines()
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+  const exportCsv = () => {
+    const rows = [['Medicine', 'Generic', 'Category', 'Manufacturer', 'Batch', 'Stock', 'Expiry', 'Price']]
+    filteredMedicines.forEach((medicine) => (medicine.batches || []).forEach((batch) => rows.push([medicine.name, medicine.genericName, medicine.category, medicine.manufacturer, batch.batchNumber, batch.quantity, batch.expiryDate, batch.sellingPrice])))
+    const csv = rows.map((row) => row.map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\n')
+    const link = document.createElement('a')
+    link.href = `data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`
+    link.download = 'medicines.csv'
+    link.click()
+  }
 
   return (
     <div className="medicine-content">
@@ -241,27 +313,45 @@ function MedicineCatalog() {
             <h2>Medicine catalog</h2>
             <p>Manage medicines, batches, pricing, and expiry details.</p>
           </div>
-          <button className="primary-button"><Icon name="pill" size={19} /> Add medicine</button>
+          <button className="primary-button" type="button" onClick={() => openMedicine()}><Icon name="pill" size={19} /> Add medicine</button>
         </div>
         <div className="medicine-toolbar">
           <label className="catalog-search"><Icon name="search" size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search medicine catalog..." aria-label="Search medicine catalog" /></label>
-          <button className="catalog-button"><Icon name="filter" size={19} /> Filters</button>
-          <button className="catalog-button"><Icon name="download" size={18} /> Export</button>
+          <select className="catalog-button category-filter" value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Filter by category"><option value="">All categories</option>{categories.map((item) => <option key={item} value={item}>{item}</option>)}</select>
+          <button className="catalog-button" type="button" onClick={exportCsv}><Icon name="download" size={18} /> Export</button>
         </div>
         <div className="medicine-table-wrap">
           <table className="medicine-table">
-            <thead><tr><th>Medicine</th><th>Generic</th><th>Category</th><th>Manufacturer</th><th>Batch</th><th>Stock</th><th>Expiry</th><th>Price</th></tr></thead>
-            <tbody>{filteredMedicines.map((medicine) => <tr key={medicine.batch}>
-              <td><strong>{medicine.name}</strong></td><td>{medicine.generic}</td><td>{medicine.category}</td><td>{medicine.manufacturer}</td><td>{medicine.batch}</td><td>{medicine.stock}</td><td>{medicine.expiry}</td><td>{medicine.price}</td>
-            </tr>)}</tbody>
+            <thead><tr><th>Medicine</th><th>Generic</th><th>Category</th><th>Manufacturer</th><th>Batch</th><th>Stock</th><th>Expiry</th><th>Price</th><th>Actions</th></tr></thead>
+            <tbody>{filteredMedicines.flatMap((medicine) => (medicine.batches?.length ? medicine.batches : [null]).map((batch) => <tr key={`${medicine._id}-${batch?._id || 'empty'}`}>
+              <td><strong>{medicine.name}</strong></td><td>{medicine.genericName || '-'}</td><td>{medicine.category || '-'}</td><td>{medicine.manufacturer || '-'}</td><td>{batch?.batchNumber || 'No batches'}</td><td>{batch?.quantity ?? 0}</td><td>{batch?.expiryDate || '-'}</td><td>{batch ? `Rs. ${batch.sellingPrice}` : '-'}</td>
+              <td className="table-actions"><button type="button" onClick={() => openMedicine(medicine)}>Edit</button>{batch ? <><button type="button" onClick={() => openBatch(medicine, batch)}>Batch</button><button type="button" onClick={() => remove(`/api/batches/${batch._id}`, 'Delete this batch?')}>Delete batch</button></> : <button type="button" onClick={() => openBatch(medicine)}>Add batch</button>}<button type="button" onClick={() => remove(`/api/medicines/${medicine._id}`, 'Delete this medicine and all its batches?')}>Delete</button></td>
+            </tr>))}</tbody>
           </table>
-          {filteredMedicines.length === 0 && <div className="catalog-empty">No medicines match your search.</div>}
+          {loading && <div className="catalog-empty">Loading medicines...</div>}
+          {!loading && filteredMedicines.length === 0 && <div className="catalog-empty">No medicines match your search.</div>}
+          {error && <div className="catalog-error">{error}</div>}
         </div>
         <div className="medicine-footer">
           <span>Showing {filteredMedicines.length} of {medicines.length} records</span>
           <div className="pagination"><button disabled>Previous</button><button className="current-page">1</button><button>Next</button></div>
         </div>
       </section>
+      {modal && <div className="modal-backdrop" onClick={() => setModal(null)}>
+        <form className="modal-card" onSubmit={save} onClick={(event) => event.stopPropagation()}>
+          <div className="modal-header"><div><h3>{modal.type === 'batch' ? `${modal.item ? 'Edit' : 'Add'} batch` : `${modal.item ? 'Edit' : 'Add'} medicine`}</h3><p>{modal.type === 'batch' ? modal.medicine.name : 'Keep medicine details and categories up to date.'}</p></div><button className="modal-close" type="button" onClick={() => setModal(null)} aria-label="Close"><Icon name="close" size={18} /></button></div>
+          <div className="modal-body medicine-form">
+            {modal.type === 'medicine' ? <>
+              {['name', 'genericName', 'category', 'dosage', 'manufacturer'].map((field) => <label key={field} className="settings-field"><span>{field === 'genericName' ? 'Generic name' : field.charAt(0).toUpperCase() + field.slice(1)}</span><input required={field === 'name'} value={form[field] || ''} onChange={(event) => setForm({ ...form, [field]: event.target.value })} /></label>)}
+              <label className="settings-field"><span>Status</span><select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}><option>In Stock</option><option>Low Stock</option><option>Out of Stock</option></select></label>
+            </> : <>
+              {[['batchNumber', 'Batch number'], ['quantity', 'Quantity'], ['expiryDate', 'Expiry date'], ['purchasePrice', 'Purchase price'], ['sellingPrice', 'Selling price'], ['location', 'Location']].map(([field, label]) => <label key={field} className="settings-field"><span>{label}</span><input type={field === 'expiryDate' ? 'date' : ['quantity', 'purchasePrice', 'sellingPrice'].includes(field) ? 'number' : 'text'} min="0" required={field === 'batchNumber'} value={form[field] ?? ''} onChange={(event) => setForm({ ...form, [field]: event.target.value })} /></label>)}
+            </>}
+            {error && <div className="login-error-message">{error}</div>}
+          </div>
+          <div className="modal-footer"><button className="secondary-button" type="button" onClick={() => setModal(null)}>Cancel</button><button className="primary-button" type="submit">Save</button></div>
+        </form>
+      </div>}
     </div>
   )
 }
@@ -688,11 +778,11 @@ function UserManagement() {
     setError('')
     try {
       const body = { ...form }
-      if (getUserId(editingUser) && !body.password) delete body.password
       const userId = getUserId(editingUser)
-      if (editingUser && !userId) throw new Error('This account has no valid ID. Refresh the user list and try again.')
+      const isEditing = Boolean(userId)
+      if (isEditing && !body.password) delete body.password
       const response = await fetch(userId ? `${API_BASE}/api/users/${userId}` : `${API_BASE}/api/users`, {
-        method: userId ? 'PUT' : 'POST',
+        method: isEditing ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
         body: JSON.stringify(body)
       })

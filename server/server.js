@@ -298,8 +298,113 @@ app.delete('/api/users/:id', authenticateToken, requireAdministrator, async (req
 
 app.get('/api/medicines', async (req, res) => {
   try {
-    const data = await models.Medicine.find()
+    const medicines = await models.Medicine.find().sort({ name: 1 }).lean()
+    const batches = await models.MedicineBatch.find().sort({ expiryDate: 1 }).lean()
+    const data = medicines.map((medicine) => ({
+      ...medicine,
+      batches: batches.filter((batch) => String(batch.medicine) === String(medicine._id))
+    }))
     res.json(data)
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.post('/api/medicines', async (req, res) => {
+  try {
+    const { name, genericName, category, dosage, manufacturer, status } = req.body
+    if (!name?.trim()) return res.status(400).json({ error: 'Medicine name is required' })
+    const medicine = await models.Medicine.create({
+      name: name.trim(),
+      genericName: genericName?.trim() || '',
+      category: category?.trim() || '',
+      dosage: dosage?.trim() || '',
+      manufacturer: manufacturer?.trim() || '',
+      status: status || 'In Stock'
+    })
+    res.status(201).json({ ...medicine.toObject(), batches: [] })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.put('/api/medicines/:id', async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid medicine ID' })
+    const allowed = ['name', 'genericName', 'category', 'dosage', 'manufacturer', 'status']
+    const updates = Object.fromEntries(Object.entries(req.body).filter(([key]) => allowed.includes(key)))
+    if (updates.name !== undefined) {
+      if (!String(updates.name).trim()) return res.status(400).json({ error: 'Medicine name is required' })
+      updates.name = String(updates.name).trim()
+    }
+    const medicine = await models.Medicine.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true }).lean()
+    if (!medicine) return res.status(404).json({ error: 'Medicine not found' })
+    const batches = await models.MedicineBatch.find({ medicine: medicine._id }).sort({ expiryDate: 1 }).lean()
+    res.json({ ...medicine, batches })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.delete('/api/medicines/:id', async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid medicine ID' })
+    const medicine = await models.Medicine.findByIdAndDelete(req.params.id)
+    if (!medicine) return res.status(404).json({ error: 'Medicine not found' })
+    await models.MedicineBatch.deleteMany({ medicine: medicine._id })
+    res.json({ message: 'Medicine deleted successfully' })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.post('/api/medicines/:id/batches', async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid medicine ID' })
+    const { batchNumber, quantity, expiryDate, purchasePrice, sellingPrice, location } = req.body
+    if (!batchNumber?.trim()) return res.status(400).json({ error: 'Batch number is required' })
+    if (!(await models.Medicine.exists({ _id: req.params.id }))) return res.status(404).json({ error: 'Medicine not found' })
+    const batch = await models.MedicineBatch.create({
+      medicine: req.params.id,
+      batchNumber: batchNumber.trim(),
+      quantity: Number(quantity) || 0,
+      expiryDate: expiryDate || '',
+      purchasePrice: Number(purchasePrice) || 0,
+      sellingPrice: Number(sellingPrice) || 0,
+      location: location?.trim() || ''
+    })
+    res.status(201).json(batch)
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.put('/api/batches/:id', async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid batch ID' })
+    const allowed = ['batchNumber', 'quantity', 'expiryDate', 'purchasePrice', 'sellingPrice', 'location']
+    const updates = Object.fromEntries(Object.entries(req.body).filter(([key]) => allowed.includes(key)))
+    if (updates.batchNumber !== undefined) {
+      if (!String(updates.batchNumber).trim()) return res.status(400).json({ error: 'Batch number is required' })
+      updates.batchNumber = String(updates.batchNumber).trim()
+    }
+    for (const field of ['quantity', 'purchasePrice', 'sellingPrice']) {
+      if (updates[field] !== undefined) updates[field] = Number(updates[field])
+    }
+    const batch = await models.MedicineBatch.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true })
+    if (!batch) return res.status(404).json({ error: 'Batch not found' })
+    res.json(batch)
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.delete('/api/batches/:id', async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid batch ID' })
+    const batch = await models.MedicineBatch.findByIdAndDelete(req.params.id)
+    if (!batch) return res.status(404).json({ error: 'Batch not found' })
+    res.json({ message: 'Batch deleted successfully' })
   } catch (error) {
     res.status(500).json({ error: error.message })
   }

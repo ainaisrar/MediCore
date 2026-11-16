@@ -44,6 +44,16 @@ const medicineSchema = new mongoose.Schema({
   status: { type: String, default: 'In Stock' }
 }, { timestamps: true })
 
+const medicineBatchSchema = new mongoose.Schema({
+  medicine: { type: mongoose.Schema.Types.ObjectId, ref: 'Medicine', required: true },
+  batchNumber: { type: String, required: true },
+  quantity: { type: Number, default: 0, min: 0 },
+  expiryDate: { type: String, default: '' },
+  purchasePrice: { type: Number, default: 0, min: 0 },
+  sellingPrice: { type: Number, default: 0, min: 0 },
+  location: { type: String, default: '' }
+}, { timestamps: true })
+
 const inventorySchema = new mongoose.Schema({
   name: { type: String, required: true },
   batch: { type: String, required: true },
@@ -126,6 +136,7 @@ const stockHistorySchema = new mongoose.Schema({
 
 const User = mongoose.models.User || mongoose.model('User', userSchema, 'users')
 const Medicine = mongoose.models.Medicine || mongoose.model('Medicine', medicineSchema, 'medicines')
+const MedicineBatch = mongoose.models.MedicineBatch || mongoose.model('MedicineBatch', medicineBatchSchema, 'medicine_batches')
 const Inventory = mongoose.models.Inventory || mongoose.model('Inventory', inventorySchema, 'inventory')
 const Supplier = mongoose.models.Supplier || mongoose.model('Supplier', supplierSchema, 'suppliers')
 const Purchase = mongoose.models.Purchase || mongoose.model('Purchase', purchaseSchema, 'purchases')
@@ -138,6 +149,7 @@ const StockHistory = mongoose.models.StockHistory || mongoose.model('StockHistor
 const models = {
   User,
   Medicine,
+  MedicineBatch,
   Inventory,
   Supplier,
   Purchase,
