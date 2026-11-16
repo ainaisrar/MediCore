@@ -1,14 +1,20 @@
 const express = require('express')
 const cors = require('cors')
 const dotenv = require('dotenv')
+const mongoose = require('mongoose')
 const jwt = require('jsonwebtoken')
+const bcrypt = require('bcryptjs')
 const { connectDB, models } = require('./db')
 
 dotenv.config()
 
 const app = express()
 const PORT = process.env.PORT || 5000
-const JWT_SECRET = process.env.JWT_SECRET || 'medicore_secret_key'
+const JWT_SECRET = process.env.JWT_SECRET
+if (!JWT_SECRET && process.env.NODE_ENV === 'production') {
+  throw new Error('JWT_SECRET must be configured in production')
+}
+const signingSecret = JWT_SECRET || 'medicore_secret_key'
 
 app.use(cors())
 app.use(express.json())
@@ -17,11 +23,34 @@ function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization']
   const token = authHeader && authHeader.split(' ')[1]
   if (!token) return res.status(401).json({ error: 'Access token required' })
-  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+  jwt.verify(token, signingSecret, (err, decoded) => {
     if (err) return res.status(403).json({ error: 'Invalid or expired token' })
     req.user = decoded
     next()
   })
+}
+
+function requireAdministrator(req, res, next) {
+  if (req.user.role !== 'Administrator') {
+    return res.status(403).json({ error: 'Administrator access required' })
+  }
+  next()
+}
+
+function publicUser(user) {
+  return {
+    id: String(user._id),
+    _id: String(user._id),
+    name: user.name,
+    role: user.role,
+    email: user.email,
+    phone: user.phone,
+    access: user.access,
+    status: user.status,
+    employeeId: user.employeeId,
+    lastLogin: user.lastLogin,
+    settings: user.settings
+  }
 }
 
 app.get('/api/status', async (req, res) => {
@@ -45,37 +74,74 @@ app.post('/api/auth/login', async (req, res) => {
     }
     const normalizedEmail = email.trim().toLowerCase()
     const user = await models.User.findOne({ email: normalizedEmail })
-    if (!user || user.password !== password) {
+    const validPassword = user && (
+      user.password.startsWith('$2')
+        ? await bcrypt.compare(password, user.password)
+        : user.password === password
+    )
+    if (!validPassword) {
       return res.status(401).json({ error: 'Invalid email or password' })
     }
     if (user.status !== 'Active') {
       return res.status(403).json({ error: 'Account is inactive or suspended. Contact administrator.' })
     }
     const now = new Date()
+    if (!user.password.startsWith('$2')) user.password = await bcrypt.hash(password, 12)
     user.lastLogin = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
     await user.save()
 
     const token = jwt.sign(
       { id: user._id, email: user.email, role: user.role },
-      JWT_SECRET,
+      signingSecret,
       { expiresIn: '7d' }
     )
 
-    res.json({
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        role: user.role,
-        email: user.email,
-        phone: user.phone,
-        access: user.access,
-        status: user.status,
-        employeeId: user.employeeId,
-        lastLogin: user.lastLogin,
-        settings: user.settings
-      }
+    res.json({ token, user: publicUser(user) })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { name, email, password, phone } = req.body
+    if (!name?.trim() || !email?.trim() || !password || password.length < 8) {
+      return res.status(400).json({ error: 'Name, email, and a password of at least 8 characters are required' })
+    }
+    const normalizedEmail = email.trim().toLowerCase()
+    if (await models.User.exists({ email: normalizedEmail })) {
+      return res.status(409).json({ error: 'User with this email already exists' })
+    }
+    const user = await models.User.create({
+      name: name.trim(),
+      email: normalizedEmail,
+      password,
+      phone: phone?.trim() || '',
+      role: 'Staff',
+      access: 'Standard',
+      status: 'Active'
     })
+    res.status(201).json({ message: 'Registration successful. You can now sign in.', user: publicUser(user) })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.put('/api/auth/password', authenticateToken, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body
+    if (!currentPassword || !newPassword || newPassword.length < 8) {
+      return res.status(400).json({ error: 'Current password and a new password of at least 8 characters are required' })
+    }
+    const user = await models.User.findById(req.user.id)
+    if (!user) return res.status(404).json({ error: 'User not found' })
+    const valid = user.password.startsWith('$2')
+      ? await bcrypt.compare(currentPassword, user.password)
+      : user.password === currentPassword
+    if (!valid) return res.status(401).json({ error: 'Current password is incorrect' })
+    user.password = newPassword
+    await user.save()
+    res.json({ message: 'Password updated successfully' })
   } catch (error) {
     res.status(500).json({ error: error.message })
   }
@@ -148,7 +214,7 @@ app.put('/api/auth/settings', authenticateToken, async (req, res) => {
   }
 })
 
-app.get('/api/users', async (req, res) => {
+app.get('/api/users', authenticateToken, requireAdministrator, async (req, res) => {
   try {
     const data = await models.User.find().select('-password')
     res.json(data)
@@ -157,11 +223,11 @@ app.get('/api/users', async (req, res) => {
   }
 })
 
-app.post('/api/users', async (req, res) => {
+app.post('/api/users', authenticateToken, requireAdministrator, async (req, res) => {
   try {
     const { name, role, email, phone, password, access, status, employeeId } = req.body
-    if (!name || !email || !password) {
-      return res.status(400).json({ error: 'Name, email, and password are required' })
+    if (!name?.trim() || !email?.trim() || !password || password.length < 8) {
+      return res.status(400).json({ error: 'Name, email, and a password of at least 8 characters are required' })
     }
     const normalizedEmail = email.trim().toLowerCase()
     const existing = await models.User.findOne({ email: normalizedEmail })
@@ -169,16 +235,62 @@ app.post('/api/users', async (req, res) => {
       return res.status(409).json({ error: 'User with this email already exists' })
     }
     const newUser = await models.User.create({
-      name,
-      role: role || 'Staff',
+      name: name.trim(),
+      role: role === 'Administrator' ? 'Administrator' : 'Staff',
       email: normalizedEmail,
-      phone: phone || '',
+      phone: phone?.trim() || '',
       password,
       access: access || 'Standard',
       status: status || 'Active',
       employeeId: employeeId || `EMP-${Math.floor(100 + Math.random() * 900)}`
     })
-    res.status(201).json(newUser)
+    res.status(201).json(publicUser(newUser))
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.put('/api/users/:id', authenticateToken, requireAdministrator, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid user ID' })
+    }
+    const allowed = ['name', 'role', 'phone', 'access', 'status', 'employeeId']
+    const updates = Object.fromEntries(Object.entries(req.body).filter(([key]) => allowed.includes(key)))
+    if (updates.name !== undefined && !String(updates.name).trim()) {
+      return res.status(400).json({ error: 'Name cannot be empty' })
+    }
+    if (updates.role !== undefined && !['Staff', 'Administrator'].includes(updates.role)) {
+      return res.status(400).json({ error: 'Role must be Staff or Administrator' })
+    }
+    if (req.body.password !== undefined) {
+      if (!req.body.password || req.body.password.length < 8) {
+        return res.status(400).json({ error: 'Password must be at least 8 characters' })
+      }
+      updates.password = req.body.password
+    }
+    if (updates.name) updates.name = updates.name.trim()
+    const user = await models.User.findById(req.params.id)
+    if (!user) return res.status(404).json({ error: 'User not found' })
+    Object.assign(user, updates)
+    await user.save()
+    res.json(publicUser(user))
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.delete('/api/users/:id', authenticateToken, requireAdministrator, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid user ID' })
+    }
+    if (String(req.user.id) === req.params.id) {
+      return res.status(400).json({ error: 'You cannot remove your own administrator account' })
+    }
+    const user = await models.User.findByIdAndDelete(req.params.id)
+    if (!user) return res.status(404).json({ error: 'User not found' })
+    res.json({ message: 'User removed successfully' })
   } catch (error) {
     res.status(500).json({ error: error.message })
   }

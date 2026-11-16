@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import './Login.css'
 
+const API_BASE = import.meta.env.VITE_API_URL || (window.location.port === '5173' ? '' : 'http://localhost:5000')
+
 const navigation = [
   ['dashboard', 'Dashboard'],
   ['pill', 'Medicines'],
@@ -32,6 +34,17 @@ function getDisplayName(email) {
 
 function getInitials(name) {
   return name.split(' ').map((part) => part.charAt(0)).join('').slice(0, 2).toUpperCase()
+}
+
+async function readApiResponse(response) {
+  const body = await response.text()
+  if (!body.trim()) return {}
+
+  try {
+    return JSON.parse(body)
+  } catch {
+    throw new Error(`The server returned an invalid response (HTTP ${response.status}).`)
+  }
 }
 
 function Icon({ name, size = 21 }) {
@@ -71,32 +84,55 @@ function Icon({ name, size = 21 }) {
 function SignIn({ onSignIn }) {
   const [showPassword, setShowPassword] = useState(false)
   const [keepSignedIn, setKeepSignedIn] = useState(false)
+  const [isRegistering, setIsRegistering] = useState(false)
+  const [name, setName] = useState('')
+  const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
 
   const handleSubmit = async (event) => {
     event.preventDefault()
     setError('')
-    if (!email.trim() || !password) {
-      setError('Please enter both email and password.')
+    setMessage('')
+    if (isRegistering && (!name.trim() || !phone.trim())) {
+      setError('Please enter your name and phone number.')
+      return
+    }
+    if (!email.trim() || !password || (isRegistering && password !== confirmPassword)) {
+      setError(isRegistering && password !== confirmPassword ? 'Passwords do not match.' : 'Please complete all required fields.')
+      return
+    }
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.')
       return
     }
     setLoading(true)
     try {
-      const response = await fetch('/api/auth/login', {
+      const response = await fetch(`${API_BASE}${isRegistering ? '/api/auth/register' : '/api/auth/login'}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password })
+        body: JSON.stringify({ name: name.trim(), phone: phone.trim(), email: email.trim(), password })
       })
-      const data = await response.json()
+      const data = await readApiResponse(response)
       if (!response.ok) {
-        throw new Error(data.error || 'Authentication failed')
+        throw new Error(data.error || (isRegistering ? 'Registration failed' : 'Authentication failed'))
       }
-      onSignIn(data.token, data.user, keepSignedIn)
+      if (isRegistering) {
+        setMessage(data.message || 'Registration successful. You can now sign in.')
+        setIsRegistering(false)
+        setPassword('')
+        setConfirmPassword('')
+      } else {
+        onSignIn(data.token, data.user, keepSignedIn)
+      }
     } catch (err) {
-      setError(err.message)
+      setError(err instanceof TypeError
+        ? 'Unable to reach the MediCore server. Start the API server and make sure MongoDB is running.'
+        : err.message)
     } finally {
       setLoading(false)
     }
@@ -138,23 +174,26 @@ function SignIn({ onSignIn }) {
       <section className="right-panel">
         <div className="login-card">
           <div className="login-icon"><Icon name="lock" size={26} /></div>
-          <div className="access-header">STAFF ACCESS</div>
-          <h2>Welcome back</h2>
-          <p className="form-subtitle">Sign in to manage your pharmacy operations.</p>
+          <div className="access-header">{isRegistering ? 'STAFF REGISTRATION' : 'STAFF ACCESS'}</div>
+          <h2>{isRegistering ? 'Create your account' : 'Welcome back'}</h2>
+          <p className="form-subtitle">{isRegistering ? 'Register for access to MediCore.' : 'Sign in to manage your pharmacy operations.'}</p>
           {error && (
             <div className="login-error-message">
               <Icon name="shield" size={16} />
               <span>{error}</span>
             </div>
           )}
+          {message && <div className="login-success-message">{message}</div>}
           <form onSubmit={handleSubmit}>
+            {isRegistering && <><div className="form-group"><label htmlFor="name">Full name</label><div className="input-wrapper"><Icon name="user" size={22} /><input id="name" value={name} onChange={(event) => setName(event.target.value)} required /></div></div><div className="form-group"><label htmlFor="phone">Phone number</label><div className="input-wrapper"><Icon name="mail" size={22} /><input id="phone" value={phone} onChange={(event) => setPhone(event.target.value)} required /></div></div></>}
             <div className="form-group"><label htmlFor="email">Email address</label><div className="input-wrapper"><Icon name="mail" size={22} /><input type="email" id="email" placeholder="name@pharmacy.com" value={email} onChange={(event) => setEmail(event.target.value)} required /></div></div>
-            <div className="form-group password-group"><div className="label-row"><label htmlFor="password">Password</label><a href="#forgot">Forgot password?</a></div><div className="input-wrapper"><Icon name="lock" size={22} /><input type={showPassword ? 'text' : 'password'} id="password" placeholder="Enter your password" value={password} onChange={(event) => setPassword(event.target.value)} required /><button type="button" className="show-password" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'}><Icon name="eye" size={21} /></button></div></div>
-            <label className="checkbox-label"><input type="checkbox" checked={keepSignedIn} onChange={(event) => setKeepSignedIn(event.target.checked)} /><span>Keep me signed in on this device</span></label>
-            <button type="submit" className="submit-button" disabled={loading}>{loading ? 'Signing in...' : <>Sign in to MediCore <Icon name="arrow" size={21} /></>}</button>
+            <div className="form-group password-group"><div className="label-row"><label htmlFor="password">Password</label></div><div className="input-wrapper"><Icon name="lock" size={22} /><input type={showPassword ? 'text' : 'password'} id="password" placeholder="At least 8 characters" value={password} onChange={(event) => setPassword(event.target.value)} required /><button type="button" className="show-password" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'}><Icon name="eye" size={21} /></button></div></div>
+            {isRegistering && <div className="form-group"><label htmlFor="confirm-password">Confirm password</label><div className="input-wrapper"><Icon name="lock" size={22} /><input type="password" id="confirm-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required /></div></div>}
+            {!isRegistering && <label className="checkbox-label"><input type="checkbox" checked={keepSignedIn} onChange={(event) => setKeepSignedIn(event.target.checked)} /><span>Keep me signed in on this device</span></label>}
+            <button type="submit" className="submit-button" disabled={loading}>{loading ? (isRegistering ? 'Creating account...' : 'Signing in...') : <>{isRegistering ? 'Create staff account' : 'Sign in to MediCore'} <Icon name="arrow" size={21} /></>}</button>
           </form>
           <div className="card-divider" />
-          <div className="admin-link"><span>Don&apos;t have access yet?</span><a href="#permission">Ask administrator for permission <Icon name="arrow" size={18} /></a></div>
+          <div className="admin-link"><span>{isRegistering ? 'Already have an account?' : 'Need a staff account?'}</span><button type="button" onClick={() => { setIsRegistering(!isRegistering); setError(''); setMessage('') }}>{isRegistering ? 'Sign in instead' : 'Register here'} <Icon name="arrow" size={18} /></button></div>
         </div>
         <div className="protected"><Icon name="shield" size={18} /> Protected with secure, role-based access</div>
       </section>
@@ -614,15 +653,73 @@ function Alerts({ notificationsEnabled, onToggleNotifications, showSidebarCount,
 function UserManagement() {
   const [query, setQuery] = useState('')
   const [users, setUsers] = useState([])
+  const [editingUser, setEditingUser] = useState(null)
+  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', role: 'Staff', access: 'Standard', status: 'Active', employeeId: '' })
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const getToken = () => localStorage.getItem('medicore_token') || sessionStorage.getItem('medicore_token')
+  const getUserId = (user) => {
+    const id = user?._id || user?.id
+    return id ? String(id) : ''
+  }
+  const loadUsers = async () => {
+    const response = await fetch(`${API_BASE}/api/users`, { headers: { Authorization: `Bearer ${getToken()}` } })
+    const data = await readApiResponse(response)
+    if (!response.ok) throw new Error(data.error || 'Unable to load users')
+    setUsers(data)
+  }
 
   useEffect(() => {
-    fetch('/api/users')
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) setUsers(data)
-      })
-      .catch((err) => console.error(err))
+    loadUsers().catch((err) => setError(err.message))
   }, [])
+
+  const openForm = (user = null) => {
+    setEditingUser(user || { _id: null })
+    setError('')
+    setForm(user
+      ? { name: user.name, email: user.email, phone: user.phone || '', password: '', role: user.role, access: user.access || 'Standard', status: user.status || 'Active', employeeId: user.employeeId || '' }
+      : { name: '', email: '', phone: '', password: '', role: 'Staff', access: 'Standard', status: 'Active', employeeId: '' })
+  }
+
+  const saveUser = async (event) => {
+    event.preventDefault()
+    setSaving(true)
+    setError('')
+    try {
+      const body = { ...form }
+      if (getUserId(editingUser) && !body.password) delete body.password
+      const userId = getUserId(editingUser)
+      if (editingUser && !userId) throw new Error('This account has no valid ID. Refresh the user list and try again.')
+      const response = await fetch(userId ? `${API_BASE}/api/users/${userId}` : `${API_BASE}/api/users`, {
+        method: userId ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify(body)
+      })
+      const data = await readApiResponse(response)
+      if (!response.ok) throw new Error(data.error || 'Unable to save user')
+      await loadUsers()
+      setEditingUser(null)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const removeUser = async (user) => {
+    if (!window.confirm(`Remove ${user.name}'s account?`)) return
+    try {
+      const userId = getUserId(user)
+      if (!userId) throw new Error('This account has no valid ID. Refresh the user list and try again.')
+      const response = await fetch(`${API_BASE}/api/users/${userId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${getToken()}` } })
+      const data = await readApiResponse(response)
+      if (!response.ok) throw new Error(data.error || 'Unable to remove user')
+      await loadUsers()
+    } catch (err) {
+      setError(err.message)
+    }
+  }
 
   const filteredUsers = users.filter((user) =>
     Object.values(user).some((value) => String(value).toLowerCase().includes(query.toLowerCase())),
@@ -636,7 +733,7 @@ function UserManagement() {
             <h2>User management</h2>
             <p>Manage system users, assign roles, and monitor account access permissions.</p>
           </div>
-          <button className="primary-button"><Icon name="user" size={19} /> Add user</button>
+          <button className="primary-button" type="button" onClick={() => openForm()}><Icon name="user" size={19} /> Add user</button>
         </div>
         <div className="users-toolbar">
           <label className="catalog-search"><Icon name="search" size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search user accounts..." aria-label="Search user accounts" /></label>
@@ -645,9 +742,9 @@ function UserManagement() {
         </div>
         <div className="users-table-wrap">
           <table className="medicine-table users-table">
-            <thead><tr><th>User</th><th>Role</th><th>Email</th><th>Phone</th><th>Access Level</th><th>Last Login</th><th>Status</th></tr></thead>
+            <thead><tr><th>User</th><th>Role</th><th>Email</th><th>Phone</th><th>Access Level</th><th>Last Login</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>{filteredUsers.map((user) => <tr key={user._id || user.id || user.email || user.name}>
-              <td><strong>{user.name}</strong></td><td>{user.role}</td><td>{user.email}</td><td>{user.phone || '—'}</td><td>{user.access || 'Standard'}</td><td>{user.lastLogin || 'Never'}</td><td>{user.status || 'Active'}</td>
+              <td><strong>{user.name}</strong></td><td>{user.role}</td><td>{user.email}</td><td>{user.phone || '—'}</td><td>{user.access || 'Standard'}</td><td>{user.lastLogin || 'Never'}</td><td>{user.status || 'Active'}</td><td><button className="catalog-button" type="button" onClick={() => openForm(user)}>Edit</button> <button className="catalog-button" type="button" onClick={() => removeUser(user)}>Remove</button></td>
             </tr>)}</tbody>
           </table>
           {filteredUsers.length === 0 && <div className="users-empty-space" aria-label="No user records" />}
@@ -657,6 +754,26 @@ function UserManagement() {
           <div className="pagination"><button disabled>Previous</button><button className="current-page">1</button><button disabled>Next</button></div>
         </div>
       </section>
+      {error && <div className="login-error-message">{error}</div>}
+      {editingUser !== null && (
+        <div className="modal-backdrop" onClick={() => setEditingUser(null)}>
+          <form className="modal-card" onSubmit={saveUser} onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header"><div><h3>{getUserId(editingUser) ? 'Update account' : 'Add staff account'}</h3><p>Set account details and access permissions.</p></div><button className="modal-close" type="button" onClick={() => setEditingUser(null)}><Icon name="close" size={18} /></button></div>
+            <div className="modal-body">
+              <label className="settings-field"><span>Full name</span><input name="name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required /></label>
+              <label className="settings-field"><span>Email</span><input type="email" name="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required disabled={Boolean(getUserId(editingUser))} /></label>
+              <label className="settings-field"><span>Phone</span><input name="phone" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></label>
+              <label className="settings-field"><span>{getUserId(editingUser) ? 'New password (optional)' : 'Password'}</span><input type="password" name="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} required={!getUserId(editingUser)} minLength="8" /></label>
+              <label className="settings-field"><span>Role</span><select name="role" value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value })}><option>Staff</option><option>Administrator</option></select></label>
+              <label className="settings-field"><span>Access</span><select name="access" value={form.access} onChange={(event) => setForm({ ...form, access: event.target.value })}><option>Standard</option><option>Full Access</option></select></label>
+              <label className="settings-field"><span>Status</span><select name="status" value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}><option>Active</option><option>Inactive</option><option>Suspended</option></select></label>
+              <label className="settings-field"><span>Employee ID</span><input name="employeeId" value={form.employeeId} onChange={(event) => setForm({ ...form, employeeId: event.target.value })} /></label>
+            </div>
+            {error && <div className="login-error-message">{error}</div>}
+            <div className="modal-footer"><button className="secondary-button" type="button" onClick={() => setEditingUser(null)}>Cancel</button><button className="primary-button" type="submit" disabled={saving}>{saving ? 'Saving...' : 'Save account'}</button></div>
+          </form>
+        </div>
+      )}
     </div>
   )
 }
@@ -672,6 +789,10 @@ function App() {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false)
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false)
+  const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' })
+  const [passwordError, setPasswordError] = useState('')
+  const [isSavingPassword, setIsSavingPassword] = useState(false)
   const [dateFormat, setDateFormat] = useState('DD Month YYYY')
   const [currency, setCurrency] = useState('PKR (Rs.)')
   const [automaticLock, setAutomaticLock] = useState(true)
@@ -703,7 +824,7 @@ function App() {
   useEffect(() => {
     const token = localStorage.getItem('medicore_token') || sessionStorage.getItem('medicore_token')
     if (token) {
-      fetch('/api/auth/me', {
+      fetch(`${API_BASE}/api/auth/me`, {
         headers: { Authorization: `Bearer ${token}` }
       })
         .then((res) => {
@@ -767,7 +888,7 @@ function App() {
     setIsSavingProfile(true)
     try {
       const token = localStorage.getItem('medicore_token') || sessionStorage.getItem('medicore_token')
-      const res = await fetch('/api/auth/profile', {
+      const res = await fetch(`${API_BASE}/api/auth/profile`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -801,7 +922,8 @@ function App() {
         notificationsEnabled,
         showSidebarCount
       }
-      const res = await fetch('/api/auth/settings', {
+
+      const res = await fetch(`${API_BASE}/api/auth/settings`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -813,11 +935,38 @@ function App() {
       if (res.ok && data.user) {
         applyUserData(data.user)
       }
+
     } catch (err) {
       console.error(err)
     } finally {
       setIsSavingSettings(false)
       setIsSettingsModalOpen(false)
+    }
+  }
+
+  const handleSavePassword = async (event) => {
+    event.preventDefault()
+    setPasswordError('')
+    if (passwordForm.newPassword.length < 8 || passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordError(passwordForm.newPassword.length < 8 ? 'New password must be at least 8 characters.' : 'Passwords do not match.')
+      return
+    }
+    setIsSavingPassword(true)
+    try {
+      const token = localStorage.getItem('medicore_token') || sessionStorage.getItem('medicore_token')
+      const response = await fetch(`${API_BASE}/api/auth/password`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ currentPassword: passwordForm.currentPassword, newPassword: passwordForm.newPassword })
+      })
+      const data = await readApiResponse(response)
+      if (!response.ok) throw new Error(data.error || 'Unable to update password')
+      setIsPasswordModalOpen(false)
+      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' })
+    } catch (err) {
+      setPasswordError(err.message)
+    } finally {
+      setIsSavingPassword(false)
     }
   }
 
@@ -885,6 +1034,7 @@ function App() {
                   <div className="profile-menu-items">
                     <button type="button" role="menuitem" onClick={() => { setIsProfileMenuOpen(false); setIsProfileModalOpen(true) }}><Icon name="user" size={22} />My profile</button>
                     <button type="button" role="menuitem" onClick={() => { setIsProfileMenuOpen(false); setIsSettingsModalOpen(true) }}><Icon name="settings" size={22} />Account settings</button>
+                    <button type="button" role="menuitem" onClick={() => { setIsProfileMenuOpen(false); setPasswordError(''); setIsPasswordModalOpen(true) }}><Icon name="lock" size={22} />Change password</button>
                   </div>
                 </div>
               )}
@@ -952,6 +1102,21 @@ function App() {
                 <button className="primary-button" type="button" disabled={isSavingSettings} onClick={handleSaveSettings}>{isSavingSettings ? 'Saving...' : 'Save changes'}</button>
               </div>
             </div>
+          </div>
+        )}
+
+        {isPasswordModalOpen && (
+          <div className="modal-backdrop" onClick={() => setIsPasswordModalOpen(false)}>
+            <form className="modal-card" onSubmit={handleSavePassword} onClick={(event) => event.stopPropagation()}>
+              <div className="modal-header"><div><h3>Change password</h3><p>Update your secure MediCore password.</p></div><button className="modal-close" type="button" onClick={() => setIsPasswordModalOpen(false)}><Icon name="close" size={18} /></button></div>
+              <div className="modal-body">
+                <label className="settings-field"><span>Current password</span><input type="password" value={passwordForm.currentPassword} onChange={(event) => setPasswordForm({ ...passwordForm, currentPassword: event.target.value })} required /></label>
+                <label className="settings-field"><span>New password</span><input type="password" minLength="8" value={passwordForm.newPassword} onChange={(event) => setPasswordForm({ ...passwordForm, newPassword: event.target.value })} required /></label>
+                <label className="settings-field"><span>Confirm new password</span><input type="password" minLength="8" value={passwordForm.confirmPassword} onChange={(event) => setPasswordForm({ ...passwordForm, confirmPassword: event.target.value })} required /></label>
+                {passwordError && <div className="login-error-message">{passwordError}</div>}
+              </div>
+              <div className="modal-footer"><button className="secondary-button" type="button" onClick={() => setIsPasswordModalOpen(false)}>Cancel</button><button className="primary-button" type="submit" disabled={isSavingPassword}>{isSavingPassword ? 'Updating...' : 'Update password'}</button></div>
+            </form>
           </div>
         )}
 

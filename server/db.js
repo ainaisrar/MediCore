@@ -1,5 +1,6 @@
 const mongoose = require('mongoose')
 const dotenv = require('dotenv')
+const bcrypt = require('bcryptjs')
 
 dotenv.config()
 
@@ -26,6 +27,11 @@ const userSchema = new mongoose.Schema({
     showSidebarCount: { type: Boolean, default: true }
   }
 }, { timestamps: true })
+
+userSchema.pre('save', async function hashPassword() {
+  if (!this.isModified('password') || this.password.startsWith('$2')) return
+  this.password = await bcrypt.hash(this.password, 12)
+})
 
 const medicineSchema = new mongoose.Schema({
   name: { type: String, required: true },

@@ -362,6 +362,16 @@ body {
   margin-bottom: 20px;
 }
 
+.login-success-message {
+  margin-bottom: 20px;
+  padding: 11px 14px;
+  border: 1px solid #bcebd9;
+  border-radius: 9px;
+  color: #087a55;
+  background: #effcf7;
+  font-size: 13.5px;
+}
+
 .form-subtitle {
   margin: 0 0 29px;
   color: #8391a9;
@@ -514,6 +524,18 @@ body {
   color: #2666ed;
   font-weight: 750;
   text-decoration: none;
+}
+
+.admin-link button {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  border: 0;
+  padding: 0;
+  color: #2666ed;
+  background: transparent;
+  font-weight: 750;
+  cursor: pointer;
 }
 
 .protected {
