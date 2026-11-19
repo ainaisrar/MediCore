@@ -37,6 +37,19 @@ function requireAdministrator(req, res, next) {
   next()
 }
 
+async function requireWriteAccess(req, res, next) {
+  try {
+    const user = await models.User.findById(req.user.id).select('role access')
+    if (!user) return res.status(401).json({ error: 'User account not found' })
+    if (user.role !== 'Administrator' && user.access !== 'Full Access') {
+      return res.status(403).json({ error: 'Full Access is required to make changes' })
+    }
+    next()
+  } catch (error) {
+    return res.status(500).json({ error: error.message })
+  }
+}
+
 function publicUser(user) {
   return {
     id: String(user._id),
@@ -164,7 +177,7 @@ app.post('/api/auth/login', async (req, res) => {
     await user.save()
 
     const token = jwt.sign(
-      { id: user._id, email: user.email, role: user.role },
+      { id: user._id, email: user.email, role: user.role, access: user.access },
       signingSecret,
       { expiresIn: '7d' }
     )
@@ -200,7 +213,7 @@ app.post('/api/auth/register', async (req, res) => {
   }
 })
 
-app.put('/api/auth/password', authenticateToken, async (req, res) => {
+app.put('/api/auth/password', authenticateToken, requireWriteAccess, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body
     if (!currentPassword || !newPassword || newPassword.length < 8) {
@@ -230,7 +243,7 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
   }
 })
 
-app.put('/api/auth/profile', authenticateToken, async (req, res) => {
+app.put('/api/auth/profile', authenticateToken, requireWriteAccess, async (req, res) => {
   try {
     const { name, phone } = req.body
     const user = await models.User.findById(req.user.id)
@@ -258,7 +271,7 @@ app.put('/api/auth/profile', authenticateToken, async (req, res) => {
   }
 })
 
-app.put('/api/auth/settings', authenticateToken, async (req, res) => {
+app.put('/api/auth/settings', authenticateToken, requireWriteAccess, async (req, res) => {
   try {
     const { settings } = req.body
     const user = await models.User.findById(req.user.id)
@@ -307,6 +320,9 @@ app.post('/api/users', authenticateToken, requireAdministrator, async (req, res)
     if (existing) {
       return res.status(409).json({ error: 'User with this email already exists' })
     }
+    if (access !== undefined && !['Standard', 'Full Access'].includes(access)) {
+      return res.status(400).json({ error: 'Access must be Standard or Full Access' })
+    }
     const newUser = await models.User.create({
       name: name.trim(),
       role: role === 'Administrator' ? 'Administrator' : 'Staff',
@@ -335,6 +351,9 @@ app.put('/api/users/:id', authenticateToken, requireAdministrator, async (req, r
     }
     if (updates.role !== undefined && !['Staff', 'Administrator'].includes(updates.role)) {
       return res.status(400).json({ error: 'Role must be Staff or Administrator' })
+    }
+    if (updates.access !== undefined && !['Standard', 'Full Access'].includes(updates.access)) {
+      return res.status(400).json({ error: 'Access must be Standard or Full Access' })
     }
     if (req.body.password !== undefined) {
       if (!req.body.password || req.body.password.length < 8) {
@@ -383,7 +402,7 @@ app.get('/api/medicines', async (req, res) => {
   }
 })
 
-app.post('/api/medicines', async (req, res) => {
+app.post('/api/medicines', authenticateToken, requireWriteAccess, async (req, res) => {
   try {
     const { name, brandName, genericName, category, dosage, manufacturer, purchasePrice, sellingPrice, status } = req.body
     if (!name?.trim()) return res.status(400).json({ error: 'Medicine name is required' })
@@ -404,7 +423,7 @@ app.post('/api/medicines', async (req, res) => {
   }
 })
 
-app.put('/api/medicines/:id', async (req, res) => {
+app.put('/api/medicines/:id', authenticateToken, requireWriteAccess, async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid medicine ID' })
     const allowed = ['name', 'brandName', 'genericName', 'category', 'dosage', 'manufacturer', 'purchasePrice', 'sellingPrice', 'status']
@@ -426,7 +445,7 @@ app.put('/api/medicines/:id', async (req, res) => {
   }
 })
 
-app.delete('/api/medicines/:id', async (req, res) => {
+app.delete('/api/medicines/:id', authenticateToken, requireWriteAccess, async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid medicine ID' })
     const medicine = await models.Medicine.findByIdAndDelete(req.params.id)
@@ -439,7 +458,7 @@ app.delete('/api/medicines/:id', async (req, res) => {
   }
 })
 
-app.post('/api/medicines/:id/batches', async (req, res) => {
+app.post('/api/medicines/:id/batches', authenticateToken, requireWriteAccess, async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid medicine ID' })
     const { supplier, batchNumber, quantity, minimumStock, manufacturingDate, expiryDate, purchasePrice, sellingPrice, location } = req.body
@@ -467,7 +486,7 @@ app.post('/api/medicines/:id/batches', async (req, res) => {
   }
 })
 
-app.put('/api/batches/:id', async (req, res) => {
+app.put('/api/batches/:id', authenticateToken, requireWriteAccess, async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid batch ID' })
     const allowed = ['supplier', 'batchNumber', 'quantity', 'minimumStock', 'manufacturingDate', 'expiryDate', 'purchasePrice', 'sellingPrice', 'location']
@@ -499,7 +518,7 @@ app.put('/api/batches/:id', async (req, res) => {
   }
 })
 
-app.delete('/api/batches/:id', async (req, res) => {
+app.delete('/api/batches/:id', authenticateToken, requireWriteAccess, async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid batch ID' })
     const batch = await models.MedicineBatch.findById(req.params.id)
@@ -514,7 +533,7 @@ app.delete('/api/batches/:id', async (req, res) => {
   }
 })
 
-app.post('/api/stock-adjustments', async (req, res) => {
+app.post('/api/stock-adjustments', authenticateToken, requireWriteAccess, async (req, res) => {
   try {
     const { batchId, quantity, mode = 'set', reference = 'Manual stock adjustment' } = req.body
     if (!mongoose.isValidObjectId(batchId)) return res.status(400).json({ error: 'A valid batch is required' })
@@ -574,7 +593,7 @@ app.get('/api/purchases', async (req, res) => {
   }
 })
 
-app.post('/api/purchases', async (req, res) => {
+app.post('/api/purchases', authenticateToken, requireWriteAccess, async (req, res) => {
   try {
     const { reference, supplier, date, status, lineItems = [] } = req.body
     if (!reference?.trim() || !supplier?.trim()) return res.status(400).json({ error: 'Reference and supplier are required' })
@@ -622,7 +641,7 @@ app.get('/api/sales', async (req, res) => {
   }
 })
 
-app.post('/api/sales', async (req, res) => {
+app.post('/api/sales', authenticateToken, requireWriteAccess, async (req, res) => {
   try {
     const { invoice, customer, date, payment, status, lineItems = [] } = req.body
     if (!invoice?.trim()) return res.status(400).json({ error: 'Invoice number is required' })

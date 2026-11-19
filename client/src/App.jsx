@@ -27,6 +27,15 @@ function formatDate(date, format) {
   return `${day} ${month} ${year}`
 }
 
+function getStoredToken() {
+  return localStorage.getItem('medicore_token') || sessionStorage.getItem('medicore_token')
+}
+
+function authenticatedFetch(url, options = {}) {
+  const headers = { ...(options.headers || {}), Authorization: `Bearer ${getStoredToken()}` }
+  return fetch(url, { ...options, headers })
+}
+
 function getDisplayName(email) {
   const localPart = email.split('@')[0].replace(/[._-]+/g, ' ').trim()
   return localPart ? localPart.split(' ').map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()).join(' ') : 'Administrator'
@@ -279,7 +288,7 @@ function EmptyRows({ type }) {
   )
 }
 
-function MedicineCatalog() {
+function MedicineCatalog({ canEdit }) {
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('')
   const [medicines, setMedicines] = useState([])
@@ -338,7 +347,7 @@ function MedicineCatalog() {
         : `${API_BASE}/api/medicines${modal.item ? `/${modal.item._id}` : ''}`
       const payload = { ...form }
       delete payload.medicineId
-      const response = await fetch(url, { method: modal.item ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      const response = await authenticatedFetch(url, { method: modal.item ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       const data = await readApiResponse(response)
       if (!response.ok) throw new Error(data.error || 'Unable to save record')
       setModal(null)
@@ -350,7 +359,7 @@ function MedicineCatalog() {
   const remove = async (url, message) => {
     if (!window.confirm(message)) return
     try {
-      const response = await fetch(`${API_BASE}${url}`, { method: 'DELETE' })
+      const response = await authenticatedFetch(`${API_BASE}${url}`, { method: 'DELETE' })
       const data = await readApiResponse(response)
       if (!response.ok) throw new Error(data.error || 'Unable to delete record')
       await loadMedicines()
@@ -376,7 +385,7 @@ function MedicineCatalog() {
             <h2>Medicine catalog</h2>
             <p>Manage medicines, batches, pricing, and expiry details.</p>
           </div>
-          <button className="primary-button" type="button" onClick={() => openMedicine()}><Icon name="pill" size={19} /> Add medicine</button>
+          <button className="primary-button" type="button" onClick={() => openMedicine()} disabled={!canEdit}><Icon name="pill" size={19} /> Add medicine</button>
         </div>
         <div className="medicine-toolbar">
           <label className="catalog-search"><Icon name="search" size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search medicine catalog..." aria-label="Search medicine catalog" /></label>
@@ -388,7 +397,7 @@ function MedicineCatalog() {
             <thead><tr><th>Brand</th><th>Generic</th><th>Category</th><th>Manufacturer</th><th>Batch</th><th>Supplier</th><th>Quantity</th><th>Manufactured</th><th>Expiry</th><th>Prices</th><th>Actions</th></tr></thead>
             <tbody>{filteredMedicines.flatMap((medicine) => (medicine.batches?.length ? medicine.batches : [null]).map((batch) => <tr key={`${medicine._id}-${batch?._id || 'empty'}`}>
               <td><strong>{medicine.brandName || medicine.name}</strong></td><td>{medicine.genericName || '-'}</td><td>{medicine.category || '-'}</td><td>{medicine.manufacturer || '-'}</td><td>{batch?.batchNumber || 'No batches'}</td><td>{batch?.supplier?.name || '-'}</td><td>{batch?.quantity ?? 0}</td><td>{batch?.manufacturingDate || '-'}</td><td>{batch?.expiryDate || '-'}</td><td>{batch ? `Rs. ${batch.purchasePrice} / ${batch.sellingPrice}` : medicine.sellingPrice ? `Rs. ${medicine.sellingPrice}` : '-'}</td>
-              <td className="table-actions"><button type="button" onClick={() => openMedicine(medicine)}>Edit</button>{batch ? <><button type="button" onClick={() => openBatch(medicine, batch)}>View / edit</button><button type="button" onClick={() => remove(`/api/batches/${batch._id}`, 'Delete this batch?')}>Delete batch</button></> : <button type="button" onClick={() => openBatch(medicine)}>Add batch</button>}<button type="button" onClick={() => remove(`/api/medicines/${medicine._id}`, 'Delete this medicine and all its batches?')}>Delete</button></td>
+              <td className="table-actions"><button type="button" disabled={!canEdit} onClick={() => openMedicine(medicine)}>Edit</button>{batch ? <><button type="button" disabled={!canEdit} onClick={() => openBatch(medicine, batch)}>View / edit</button><button type="button" disabled={!canEdit} onClick={() => remove(`/api/batches/${batch._id}`, 'Delete this batch?')}>Delete batch</button></> : <button type="button" disabled={!canEdit} onClick={() => openBatch(medicine)}>Add batch</button>}<button type="button" disabled={!canEdit} onClick={() => remove(`/api/medicines/${medicine._id}`, 'Delete this medicine and all its batches?')}>Delete</button></td>
             </tr>))}</tbody>
           </table>
           {loading && <div className="catalog-empty">Loading medicines...</div>}
@@ -420,7 +429,7 @@ function MedicineCatalog() {
   )
 }
 
-function InventoryStock() {
+function InventoryStock({ canEdit }) {
   const [query, setQuery] = useState('')
   const [inventory, setInventory] = useState([])
   const [batches, setBatches] = useState([])
@@ -454,7 +463,7 @@ function InventoryStock() {
     event.preventDefault()
     setError('')
     try {
-      const response = await fetch(`${API_BASE}/api/stock-adjustments`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
+      const response = await authenticatedFetch(`${API_BASE}/api/stock-adjustments`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
       const data = await readApiResponse(response)
       if (!response.ok) throw new Error(data.error || 'Unable to adjust stock')
       setModal(false)
@@ -484,7 +493,7 @@ function InventoryStock() {
             <h2>Current inventory</h2>
             <p>Track available quantities and stock by batch.</p>
           </div>
-          <button className="primary-button" type="button" onClick={() => { setError(''); setForm({ batchId: batches[0]?._id || '', mode: 'set', quantity: 0, reference: '' }); setModal(true) }}><Icon name="cube" size={19} /> Adjust stock</button>
+          <button className="primary-button" type="button" disabled={!canEdit} onClick={() => { setError(''); setForm({ batchId: batches[0]?._id || '', mode: 'set', quantity: 0, reference: '' }); setModal(true) }}><Icon name="cube" size={19} /> Adjust stock</button>
         </div>
         <div className="inventory-toolbar">
           <label className="catalog-search"><Icon name="search" size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search current inventory..." aria-label="Search current inventory" /></label>
@@ -561,7 +570,7 @@ function SupplierDirectory() {
   )
 }
 
-function PurchaseOrders() {
+function PurchaseOrders({ canEdit }) {
   const [query, setQuery] = useState('')
   const [purchases, setPurchases] = useState([])
   const [batches, setBatches] = useState([])
@@ -586,7 +595,7 @@ function PurchaseOrders() {
     event.preventDefault()
     setError('')
     try {
-      const response = await fetch(`${API_BASE}/api/purchases`, {
+      const response = await authenticatedFetch(`${API_BASE}/api/purchases`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...form, lineItems: [{ batchId: form.batchId, quantity: Number(form.quantity), purchasePrice: Number(form.purchasePrice) }] })
@@ -606,7 +615,7 @@ function PurchaseOrders() {
       <section className="purchase-panel">
         <div className="purchase-heading">
           <div><h2>Purchase orders</h2><p>Record incoming stock and supplier invoices.</p></div>
-          <button className="primary-button" type="button" onClick={() => { setError(''); setForm({ reference: `PO-${Date.now().toString().slice(-6)}`, supplier: '', date: new Date().toISOString().slice(0, 10), batchId: batches[0]?._id || '', quantity: 1, purchasePrice: 0 }); setModal(true) }}><Icon name="box" size={19} /> New purchase</button>
+          <button className="primary-button" type="button" disabled={!canEdit} onClick={() => { setError(''); setForm({ reference: `PO-${Date.now().toString().slice(-6)}`, supplier: '', date: new Date().toISOString().slice(0, 10), batchId: batches[0]?._id || '', quantity: 1, purchasePrice: 0 }); setModal(true) }}><Icon name="box" size={19} /> New purchase</button>
         </div>
         <div className="purchase-toolbar"><label className="catalog-search"><Icon name="search" size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search purchase orders..." /></label></div>
         <div className="purchase-table-wrap">
@@ -637,7 +646,7 @@ function PurchaseOrders() {
   )
 }
 
-function SalesBilling() {
+function SalesBilling({ canEdit }) {
   const [query, setQuery] = useState('')
   const [sales, setSales] = useState([])
   const [batches, setBatches] = useState([])
@@ -662,7 +671,7 @@ function SalesBilling() {
     event.preventDefault()
     setError('')
     try {
-      const response = await fetch(`${API_BASE}/api/sales`, {
+      const response = await authenticatedFetch(`${API_BASE}/api/sales`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...form, lineItems: [{ batchId: form.batchId, quantity: Number(form.quantity), sellingPrice: Number(form.sellingPrice) }] })
@@ -685,7 +694,7 @@ function SalesBilling() {
             <h2>Sales &amp; billing</h2>
             <p>Generate invoices, process counter sales, and track transactions.</p>
           </div>
-          <button className="primary-button" type="button" onClick={() => {
+          <button className="primary-button" type="button" disabled={!canEdit} onClick={() => {
             const batch = batches.find((item) => Number(item.quantity) > 0) || batches[0]
             setError('')
             setForm({ invoice: `INV-${Date.now().toString().slice(-6)}`, customer: 'Walk-in Customer', date: new Date().toISOString().slice(0, 10), payment: 'Cash', batchId: batch?._id || '', quantity: 1, sellingPrice: batch?.sellingPrice || 0 })
@@ -1323,6 +1332,7 @@ function App() {
   }
 
   const isAdministrator = currentUser?.role === 'Administrator'
+  const canEdit = isAdministrator || currentUser?.access === 'Full Access'
   const visibleNavigation = navigation.filter(([, label]) => {
     if (label === 'User Management') {
       return isAdministrator
@@ -1419,7 +1429,7 @@ function App() {
               </div>
               <div className="profile-modal-footer">
                 <button className="secondary-button" type="button" onClick={() => setIsProfileModalOpen(false)}>Cancel</button>
-                <button className="primary-button" type="button" disabled={isSavingProfile} onClick={handleSaveProfile}>{isSavingProfile ? 'Saving...' : 'Save changes'}</button>
+                <button className="primary-button" type="button" disabled={!canEdit || isSavingProfile} onClick={handleSaveProfile}>{isSavingProfile ? 'Saving...' : 'Save changes'}</button>
               </div>
             </div>
           </div>
@@ -1447,7 +1457,7 @@ function App() {
               </div>
               <div className="profile-modal-footer">
                 <button className="secondary-button" type="button" onClick={() => setIsSettingsModalOpen(false)}>Cancel</button>
-                <button className="primary-button" type="button" disabled={isSavingSettings} onClick={handleSaveSettings}>{isSavingSettings ? 'Saving...' : 'Save changes'}</button>
+                <button className="primary-button" type="button" disabled={!canEdit || isSavingSettings} onClick={handleSaveSettings}>{isSavingSettings ? 'Saving...' : 'Save changes'}</button>
               </div>
             </div>
           </div>
@@ -1463,12 +1473,12 @@ function App() {
                 <label className="settings-field"><span>Confirm new password</span><input type="password" minLength="8" value={passwordForm.confirmPassword} onChange={(event) => setPasswordForm({ ...passwordForm, confirmPassword: event.target.value })} required /></label>
                 {passwordError && <div className="login-error-message">{passwordError}</div>}
               </div>
-              <div className="modal-footer"><button className="secondary-button" type="button" onClick={() => setIsPasswordModalOpen(false)}>Cancel</button><button className="primary-button" type="submit" disabled={isSavingPassword}>{isSavingPassword ? 'Updating...' : 'Update password'}</button></div>
+              <div className="modal-footer"><button className="secondary-button" type="button" onClick={() => setIsPasswordModalOpen(false)}>Cancel</button><button className="primary-button" type="submit" disabled={!canEdit || isSavingPassword}>{isSavingPassword ? 'Updating...' : 'Update password'}</button></div>
             </form>
           </div>
         )}
 
-        {activePage === 'Medicines' ? <MedicineCatalog /> : activePage === 'Inventory' ? <InventoryStock /> : activePage === 'Suppliers' ? <SupplierDirectory /> : activePage === 'Purchases' ? <PurchaseOrders /> : activePage === 'Sales & Billing' ? <SalesBilling /> : activePage === 'Customers' ? <CustomerDirectory /> : activePage === 'Stock History' ? <StockHistory /> : activePage === 'Alerts' ? <Alerts notificationsEnabled={notificationsEnabled} onToggleNotifications={() => setNotificationsEnabled((prev) => !prev)} showSidebarCount={showSidebarCount} onToggleSidebarCount={() => setShowSidebarCount((prev) => !prev)} /> : activePage === 'Reports' ? <ReportsDirectory /> : activePage === 'User Management' ? (isAdministrator ? <UserManagement /> : <div className="content"><div className="welcome-row"><p>Access restricted. Administrator access required.</p></div></div>) : <DashboardOverview onNavigate={setActivePage} />}
+        {activePage === 'Medicines' ? <MedicineCatalog canEdit={canEdit} /> : activePage === 'Inventory' ? <InventoryStock canEdit={canEdit} /> : activePage === 'Suppliers' ? <SupplierDirectory /> : activePage === 'Purchases' ? <PurchaseOrders canEdit={canEdit} /> : activePage === 'Sales & Billing' ? <SalesBilling canEdit={canEdit} /> : activePage === 'Customers' ? <CustomerDirectory /> : activePage === 'Stock History' ? <StockHistory /> : activePage === 'Alerts' ? <Alerts notificationsEnabled={notificationsEnabled} onToggleNotifications={() => setNotificationsEnabled((prev) => !prev)} showSidebarCount={showSidebarCount} onToggleSidebarCount={() => setShowSidebarCount((prev) => !prev)} /> : activePage === 'Reports' ? <ReportsDirectory /> : activePage === 'User Management' ? (isAdministrator ? <UserManagement /> : <div className="content"><div className="welcome-row"><p>Access restricted. Administrator access required.</p></div></div>) : <DashboardOverview onNavigate={setActivePage} />}
       </main>
     </div>
   )
