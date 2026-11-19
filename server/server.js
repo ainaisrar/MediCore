@@ -79,6 +79,14 @@ async function recordStockMovement({ medicine, batch, type, quantity, previous, 
   })
 }
 
+function isExpired(expiryDate) {
+  if (!expiryDate) return false
+  const expiry = /^\d{4}-\d{2}-\d{2}$/.test(expiryDate)
+    ? new Date(`${expiryDate}T23:59:59.999`)
+    : new Date(expiryDate)
+  return !Number.isNaN(expiry.getTime()) && expiry < new Date()
+}
+
 async function refreshInventoryAndAlerts() {
   const medicines = await models.Medicine.find().lean()
   const batches = await models.MedicineBatch.find().populate('supplier', 'name').lean()
@@ -655,6 +663,9 @@ app.post('/api/sales', authenticateToken, requireWriteAccess, async (req, res) =
       if (quantity <= 0) return res.status(400).json({ error: 'Sale quantities must be greater than zero' })
       const batch = await models.MedicineBatch.findById(line.batchId)
       if (!batch) return res.status(404).json({ error: 'Sale batch not found' })
+      if (isExpired(batch.expiryDate)) {
+        return res.status(409).json({ error: `Cannot sell expired batch ${batch.batchNumber}` })
+      }
       if (batch.quantity < quantity) return res.status(409).json({ error: `Insufficient stock for batch ${batch.batchNumber}` })
       const previous = batch.quantity
       batch.quantity -= quantity

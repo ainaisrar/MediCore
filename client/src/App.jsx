@@ -27,6 +27,14 @@ function formatDate(date, format) {
   return `${day} ${month} ${year}`
 }
 
+function isExpiredDate(expiryDate) {
+  if (!expiryDate) return false
+  const expiry = /^\d{4}-\d{2}-\d{2}$/.test(expiryDate)
+    ? new Date(`${expiryDate}T23:59:59.999`)
+    : new Date(expiryDate)
+  return !Number.isNaN(expiry.getTime()) && expiry < new Date()
+}
+
 function getStoredToken() {
   return localStorage.getItem('medicore_token') || sessionStorage.getItem('medicore_token')
 }
@@ -77,6 +85,7 @@ function Icon({ name, size = 21 }) {
     close: <><path d="m6 6 12 12M18 6 6 18" /></>,
     filter: <><path d="M4 6h16M7 12h10M10 18h4" /></>,
     download: <><path d="M12 3v12M7 10l5 5 5-5M5 21h14" /></>,
+    print: <><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><path d="M6 14h12v7H6z" /><path d="M18 12h.01" /></>,
     lock: <><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /><path d="M12 14v2" /></>,
     mail: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></>,
     eye: <><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" /><circle cx="12" cy="12" r="2.5" /></>,
@@ -652,94 +661,129 @@ function SalesBilling({ canEdit }) {
   const [batches, setBatches] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [modal, setModal] = useState(false)
-  const [form, setForm] = useState({ invoice: '', customer: 'Walk-in Customer', date: '', payment: 'Cash', batchId: '', quantity: 1, sellingPrice: 0 })
+  const [cart, setCart] = useState([])
+  const [lastSale, setLastSale] = useState(null)
+  const [form, setForm] = useState(() => ({ invoice: `INV-${Date.now().toString().slice(-6)}`, customer: 'Walk-in Customer', date: new Date().toISOString().slice(0, 10), payment: 'Cash' }))
   const load = async () => {
     setLoading(true)
     try {
-      const [saleResponse, medicineResponse] = await Promise.all([fetch(`${API_BASE}/api/sales`), fetch(`${API_BASE}/api/medicines`)])
-      const saleData = await readApiResponse(saleResponse)
+      const [salesResponse, medicineResponse] = await Promise.all([
+        fetch(`${API_BASE}/api/sales`),
+        fetch(`${API_BASE}/api/medicines`)
+      ])
+      const salesData = await readApiResponse(salesResponse)
       const medicineData = await readApiResponse(medicineResponse)
-      if (!saleResponse.ok) throw new Error(saleData.error || 'Unable to load sales')
+      if (!salesResponse.ok) throw new Error(salesData.error || 'Unable to load sales history')
       if (!medicineResponse.ok) throw new Error(medicineData.error || 'Unable to load medicines')
-      setSales(saleData)
+      setSales(salesData)
       setBatches(medicineData.flatMap((medicine) => (medicine.batches || []).map((batch) => ({ ...batch, medicineName: medicine.brandName || medicine.name }))))
     } catch (err) { setError(err.message) } finally { setLoading(false) }
   }
   useEffect(() => { load() }, [])
+  const openSale = () => {
+    setError('')
+    setLastSale(null)
+    setForm({ invoice: `INV-${Date.now().toString().slice(-6)}`, customer: 'Walk-in Customer', date: new Date().toISOString().slice(0, 10), payment: 'Cash' })
+    setCart([])
+  }
+  const addToCart = (batch) => {
+    if (!canEdit || Number(batch.quantity) <= 0) return
+    setCart((current) => {
+      const existing = current.find((item) => item.batchId === batch._id)
+      if (existing) {
+        return current.map((item) => item.batchId === batch._id
+          ? { ...item, quantity: Math.min(item.quantity + 1, Number(batch.quantity)) }
+          : item)
+      }
+      return [...current, { batchId: batch._id, medicineName: batch.medicineName, batchNumber: batch.batchNumber, quantity: 1, available: Number(batch.quantity), sellingPrice: Number(batch.sellingPrice || batch.price || 0) }]
+    })
+  }
+  const changeQuantity = (batchId, quantity) => {
+    setCart((current) => current.map((item) => item.batchId === batchId
+      ? { ...item, quantity: Math.max(1, Math.min(Number(quantity) || 1, item.available)) }
+      : item))
+  }
+  const removeFromCart = (batchId) => setCart((current) => current.filter((item) => item.batchId !== batchId))
+  const subtotal = cart.reduce((total, item) => total + item.quantity * item.sellingPrice, 0)
   const save = async (event) => {
     event.preventDefault()
+    if (!cart.length) {
+      setError('Add at least one medicine to the bill.')
+      return
+    }
     setError('')
     try {
       const response = await authenticatedFetch(`${API_BASE}/api/sales`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, lineItems: [{ batchId: form.batchId, quantity: Number(form.quantity), sellingPrice: Number(form.sellingPrice) }] })
+        body: JSON.stringify({ ...form, lineItems: cart.map(({ batchId, quantity, sellingPrice }) => ({ batchId, quantity, sellingPrice })) })
       })
       const data = await readApiResponse(response)
       if (!response.ok) throw new Error(data.error || 'Unable to record sale')
-      setModal(false)
+      setLastSale(data)
+      setCart([])
+      setForm({ invoice: `INV-${Date.now().toString().slice(-6)}`, customer: 'Walk-in Customer', date: new Date().toISOString().slice(0, 10), payment: 'Cash' })
       await load()
     } catch (err) { setError(err.message) }
   }
-  const filteredSales = sales.filter((sale) =>
-    Object.values(sale).some((value) => String(value).toLowerCase().includes(query.toLowerCase())),
-  )
+  const availableBatches = batches.filter((batch) => !isExpiredDate(batch.expiryDate) && `${batch.medicineName} ${batch.batchNumber}`.toLowerCase().includes(query.toLowerCase()))
 
   return (
-    <div className="sales-content">
-      <section className="billing-panel">
-        <div className="billing-heading">
-          <div>
-            <h2>Sales &amp; billing</h2>
-            <p>Generate invoices, process counter sales, and track transactions.</p>
+    <div className="pos-content">
+      <div className="pos-grid">
+        <section className="pos-products">
+          <div className="pos-section-heading"><div><h2>New sale</h2><p>Search medicines and add available batches</p></div></div>
+          <label className="pos-search"><Icon name="search" size={21} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search medicine by name, generic, or batch..." aria-label="Search medicine by name, generic, or batch" /></label>
+          <div className="pos-product-grid">
+            {loading && <p className="pos-empty">Loading medicines...</p>}
+            {!loading && availableBatches.map((batch) => <button className="pos-product-card" type="button" key={batch._id} disabled={!canEdit || Number(batch.quantity) <= 0} onClick={() => addToCart(batch)}>
+              <span className="pos-product-icon"><Icon name="pill" size={23} /></span>
+              <span className="pos-product-copy"><strong>{batch.medicineName}</strong><small>{batch.quantity} in stock · Rs. {Number(batch.sellingPrice || batch.price || 0).toLocaleString()}</small></span>
+              <span className="pos-add">+</span>
+            </button>)}
+            {!loading && availableBatches.length === 0 && <p className="pos-empty">No available medicines found.</p>}
           </div>
-          <button className="primary-button" type="button" disabled={!canEdit} onClick={() => {
-            const batch = batches.find((item) => Number(item.quantity) > 0) || batches[0]
-            setError('')
-            setForm({ invoice: `INV-${Date.now().toString().slice(-6)}`, customer: 'Walk-in Customer', date: new Date().toISOString().slice(0, 10), payment: 'Cash', batchId: batch?._id || '', quantity: 1, sellingPrice: batch?.sellingPrice || 0 })
-            setModal(true)
-          }}><Icon name="cart" size={19} /> Create sale</button>
-        </div>
-        <div className="billing-toolbar">
-          <label className="catalog-search"><Icon name="search" size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search sales invoices..." aria-label="Search sales invoices" /></label>
-          <button className="catalog-button"><Icon name="filter" size={19} /> Filters</button>
-          <button className="catalog-button"><Icon name="download" size={18} /> Export</button>
-        </div>
-        <div className="sales-table-wrap">
-          <table className="medicine-table billing-table">
+        </section>
+        <form className="pos-bill" onSubmit={save}>
+          <div className="pos-section-heading"><div><h2>Current bill</h2><p>Invoice #{form.invoice || 'New'} · {cart.length} {cart.length === 1 ? 'item' : 'items'}</p></div></div>
+          <div className="pos-bill-items">
+            {cart.map((item) => <div className="pos-bill-item" key={item.batchId}>
+              <div><strong>{item.medicineName}</strong><small>{item.quantity} × Rs. {item.sellingPrice.toLocaleString()}</small></div>
+              <strong>Rs. {(item.quantity * item.sellingPrice).toLocaleString()}</strong>
+              <div className="pos-quantity"><button type="button" onClick={() => changeQuantity(item.batchId, item.quantity - 1)}>-</button><input value={item.quantity} onChange={(event) => changeQuantity(item.batchId, event.target.value)} aria-label={`Quantity for ${item.medicineName}`} /><button type="button" onClick={() => changeQuantity(item.batchId, item.quantity + 1)}>+</button><button className="pos-remove" type="button" onClick={() => removeFromCart(item.batchId)} aria-label={`Remove ${item.medicineName}`}>×</button></div>
+            </div>)}
+            {!cart.length && <div className="pos-bill-empty">Add medicines to start a new bill.</div>}
+          </div>
+          <div className="pos-bill-summary">
+            <label><span>Customer</span><input value={form.customer} onChange={(event) => setForm({ ...form, customer: event.target.value })} /></label>
+            <label><span>Payment</span><select value={form.payment} onChange={(event) => setForm({ ...form, payment: event.target.value })}><option>Cash</option><option>Card</option><option>Bank transfer</option></select></label>
+            <div className="pos-total-row"><span>Subtotal</span><span>Rs. {subtotal.toLocaleString()}</span></div>
+            <div className="pos-total-row"><span>Discount</span><span>Rs. 0</span></div>
+            <div className="pos-total"><strong>Total</strong><strong>Rs. {subtotal.toLocaleString()}</strong></div>
+          </div>
+          {error && <div className="login-error-message">{error}</div>}
+          <button className="pos-complete" type="submit" disabled={!canEdit || !cart.length}><Icon name="print" size={20} /> Complete sale &amp; print</button>
+        </form>
+      </div>
+      {lastSale ? (
+        <section className="pos-sale-confirmation" aria-live="polite">
+          <div className="pos-sale-confirmation-heading"><div><strong>Sale completed</strong><span>Invoice #{lastSale.invoice}</span></div><strong>{lastSale.total}</strong></div>
+          <div className="pos-sale-details"><span><small>Customer</small>{lastSale.customer}</span><span><small>Items</small>{lastSale.items}</span><span><small>Payment</small>{lastSale.payment}</span><span><small>Date</small>{lastSale.date}</span></div>
+          <button className="secondary-button" type="button" disabled={!canEdit} onClick={openSale}><Icon name="plus" size={18} /> New bill</button>
+        </section>
+      ) : (
+        <button className="pos-new-sale secondary-button" type="button" disabled={!canEdit} onClick={openSale}><Icon name="plus" size={18} /> New bill</button>
+      )}
+      <section className="pos-history">
+        <div className="pos-history-heading"><div><h2>Sales history</h2><p>Completed sales and billing records</p></div><span>{sales.length} {sales.length === 1 ? 'sale' : 'sales'}</span></div>
+        <div className="pos-history-table-wrap">
+          <table className="medicine-table pos-history-table">
             <thead><tr><th>Invoice</th><th>Customer</th><th>Date</th><th>Items</th><th>Payment</th><th>Total</th><th>Status</th></tr></thead>
-            <tbody>{filteredSales.map((sale) => <tr key={sale.id || sale.invoice}>
-              <td><strong>{sale.invoice}</strong></td><td>{sale.customer}</td><td>{sale.date}</td><td>{sale.items}</td><td>{sale.payment}</td><td>{sale.total}</td><td>{sale.status}</td>
-            </tr>)}</tbody>
+            <tbody>{sales.map((sale) => <tr key={sale._id || sale.id || sale.invoice}><td><strong>{sale.invoice}</strong></td><td>{sale.customer}</td><td>{sale.date}</td><td>{sale.items}</td><td>{sale.payment}</td><td>{sale.total}</td><td>{sale.status}</td></tr>)}</tbody>
           </table>
-          {loading && <div className="billing-empty-space">Loading sales...</div>}
-          {!loading && filteredSales.length === 0 && <div className="billing-empty-space" aria-label="No sales records" />}
-        </div>
-        <div className="medicine-footer">
-          <span>Showing {filteredSales.length} of {sales.length} records</span>
-          <div className="pagination"><button disabled>Previous</button><button className="current-page">1</button><button disabled>Next</button></div>
+          {!loading && sales.length === 0 && <div className="pos-history-empty">No completed sales yet.</div>}
         </div>
       </section>
-      {modal && <div className="modal-backdrop" onClick={() => setModal(false)}>
-        <form className="modal-card" onSubmit={save} onClick={(event) => event.stopPropagation()}>
-          <div className="modal-header"><div><h3>Create sale</h3><p>Completing the sale decreases the selected batch stock automatically.</p></div><button className="modal-close" type="button" onClick={() => setModal(false)}><Icon name="close" size={18} /></button></div>
-          <div className="modal-body medicine-form">
-            <label className="settings-field"><span>Invoice</span><input required value={form.invoice} onChange={(event) => setForm({ ...form, invoice: event.target.value })} /></label>
-            <label className="settings-field"><span>Customer</span><input value={form.customer} onChange={(event) => setForm({ ...form, customer: event.target.value })} /></label>
-            <label className="settings-field"><span>Date</span><input type="date" required value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} /></label>
-            <label className="settings-field"><span>Payment</span><select value={form.payment} onChange={(event) => setForm({ ...form, payment: event.target.value })}><option>Cash</option><option>Card</option><option>Bank transfer</option></select></label>
-            <label className="settings-field"><span>Medicine batch</span><select required value={form.batchId} onChange={(event) => {
-              const batch = batches.find((item) => item._id === event.target.value)
-              setForm({ ...form, batchId: event.target.value, sellingPrice: batch?.sellingPrice || 0 })
-            }}><option value="">Select batch</option>{batches.map((batch) => <option key={batch._id} value={batch._id}>{batch.medicineName} - {batch.batchNumber} ({batch.quantity} available)</option>)}</select></label>
-            <label className="settings-field"><span>Quantity sold</span><input type="number" min="1" required value={form.quantity} onChange={(event) => setForm({ ...form, quantity: event.target.value })} /></label>
-            <label className="settings-field"><span>Unit selling price</span><input type="number" min="0" required value={form.sellingPrice} onChange={(event) => setForm({ ...form, sellingPrice: event.target.value })} /></label>
-            {error && <div className="login-error-message">{error}</div>}
-          </div>
-          <div className="modal-footer"><button className="secondary-button" type="button" onClick={() => setModal(false)}>Cancel</button><button className="primary-button" type="submit">Complete sale</button></div>
-        </form>
-      </div>}
     </div>
   )
 }
@@ -837,8 +881,10 @@ function StockHistory() {
       .catch(() => setStockHistory([]))
       .finally(() => setLoading(false))
   }, [])
+  const normalizedQuery = query.trim().toLowerCase()
   const filteredHistory = stockHistory.filter((item) =>
-    Object.values(item).some((value) => String(value).toLowerCase().includes(query.toLowerCase())),
+    [item.date, item.medicine, item.batch, item.type, item.quantity, item.previous, item.balance, item.reference]
+      .some((value) => String(value ?? '').toLowerCase().includes(normalizedQuery)),
   )
 
   return (
@@ -859,7 +905,7 @@ function StockHistory() {
         <div className="history-table-wrap">
           <table className="medicine-table history-table">
             <thead><tr><th>Date &amp; Time</th><th>Medicine</th><th>Batch</th><th>Type</th><th>Quantity</th><th>Previous</th><th>New Balance</th><th>Reference</th></tr></thead>
-            <tbody>{filteredHistory.map((item) => <tr key={item.id}>
+            <tbody>{filteredHistory.map((item) => <tr key={item._id || item.id || `${item.date}-${item.batch}-${item.type}`}>
               <td>{item.date}</td><td><strong>{item.medicine}</strong></td><td>{item.batch}</td><td>{item.type}</td><td>{item.quantity}</td><td>{item.previous}</td><td>{item.balance}</td><td>{item.reference}</td>
             </tr>)}</tbody>
           </table>
