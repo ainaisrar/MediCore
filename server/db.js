@@ -52,6 +52,7 @@ const medicineBatchSchema = new mongoose.Schema({
   supplier: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier', default: null },
   batchNumber: { type: String, required: true },
   quantity: { type: Number, default: 0, min: 0 },
+  minimumStock: { type: Number, default: 10, min: 0 },
   manufacturingDate: { type: String, default: '' },
   expiryDate: { type: String, default: '' },
   purchasePrice: { type: Number, default: 0, min: 0 },
@@ -85,6 +86,7 @@ const purchaseSchema = new mongoose.Schema({
   date: { type: String, default: '' },
   items: { type: Number, default: 0 },
   amount: { type: String, default: '$0.00' },
+  lineItems: { type: Array, default: [] },
   status: { type: String, default: 'Pending' }
 }, { timestamps: true })
 
@@ -95,6 +97,7 @@ const saleSchema = new mongoose.Schema({
   items: { type: Number, default: 0 },
   payment: { type: String, default: 'Cash' },
   total: { type: String, default: '$0.00' },
+  lineItems: { type: Array, default: [] },
   status: { type: String, default: 'Completed' }
 }, { timestamps: true })
 

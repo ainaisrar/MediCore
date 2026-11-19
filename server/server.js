@@ -53,6 +53,79 @@ function publicUser(user) {
   }
 }
 
+async function recordStockMovement({ medicine, batch, type, quantity, previous, balance, reference = '' }) {
+  await models.StockHistory.create({
+    date: new Date().toISOString(),
+    medicine: medicine?.name || String(medicine || ''),
+    batch: batch?.batchNumber || String(batch || ''),
+    type,
+    quantity,
+    previous,
+    balance,
+    reference
+  })
+}
+
+async function refreshInventoryAndAlerts() {
+  const medicines = await models.Medicine.find().lean()
+  const batches = await models.MedicineBatch.find().populate('supplier', 'name').lean()
+
+  await models.Inventory.deleteMany({})
+  if (batches.length) {
+    await models.Inventory.insertMany(batches.map((batch) => {
+      const medicine = medicines.find((item) => String(item._id) === String(batch.medicine))
+      const minimum = batch.minimumStock !== undefined && batch.minimumStock !== null ? Math.max(0, Number(batch.minimumStock) || 0) : 10
+      const available = Number(batch.quantity) || 0
+      return {
+        name: medicine?.name || 'Unknown medicine',
+        batch: batch.batchNumber,
+        available,
+        reserved: 0,
+        minimum,
+        status: available <= 0 ? 'Out of Stock' : available <= minimum ? 'Low Stock' : 'Normal',
+        location: batch.location || '',
+        expiry: batch.expiryDate || ''
+      }
+    }))
+  }
+
+  await models.Alert.deleteMany({})
+  const alerts = []
+  const now = new Date()
+  const nearExpiry = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+  for (const batch of batches) {
+    const medicine = medicines.find((item) => String(item._id) === String(batch.medicine))
+    const available = Number(batch.quantity) || 0
+    const minimum = batch.minimumStock !== undefined && batch.minimumStock !== null ? Math.max(0, Number(batch.minimumStock) || 0) : 10
+    if (available <= minimum) {
+      alerts.push({
+        alert: available <= 0 ? 'Out of stock' : 'Low stock',
+        medicine: medicine?.name || 'Unknown medicine',
+        batch: batch.batchNumber,
+        stock: available,
+        threshold: minimum,
+        expiry: batch.expiryDate || '',
+        severity: available <= 0 ? 'Critical' : 'Warning'
+      })
+    }
+    if (batch.expiryDate) {
+      const expiry = new Date(batch.expiryDate)
+      if (!Number.isNaN(expiry.getTime()) && expiry <= nearExpiry) {
+        alerts.push({
+          alert: expiry < now ? 'Expired' : 'Near expiry',
+          medicine: medicine?.name || 'Unknown medicine',
+          batch: batch.batchNumber,
+          stock: available,
+          threshold: minimum,
+          expiry: batch.expiryDate,
+          severity: expiry < now ? 'Critical' : 'Warning'
+        })
+      }
+    }
+  }
+  if (alerts.length) await models.Alert.insertMany(alerts)
+}
+
 app.get('/api/status', async (req, res) => {
   try {
     const collections = Object.keys(models)
@@ -359,6 +432,7 @@ app.delete('/api/medicines/:id', async (req, res) => {
     const medicine = await models.Medicine.findByIdAndDelete(req.params.id)
     if (!medicine) return res.status(404).json({ error: 'Medicine not found' })
     await models.MedicineBatch.deleteMany({ medicine: medicine._id })
+    await refreshInventoryAndAlerts()
     res.json({ message: 'Medicine deleted successfully' })
   } catch (error) {
     res.status(500).json({ error: error.message })
@@ -368,20 +442,25 @@ app.delete('/api/medicines/:id', async (req, res) => {
 app.post('/api/medicines/:id/batches', async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid medicine ID' })
-    const { supplier, batchNumber, quantity, manufacturingDate, expiryDate, purchasePrice, sellingPrice, location } = req.body
+    const { supplier, batchNumber, quantity, minimumStock, manufacturingDate, expiryDate, purchasePrice, sellingPrice, location } = req.body
     if (!batchNumber?.trim()) return res.status(400).json({ error: 'Batch number is required' })
-    if (!(await models.Medicine.exists({ _id: req.params.id }))) return res.status(404).json({ error: 'Medicine not found' })
+    const medicine = await models.Medicine.findById(req.params.id)
+    if (!medicine) return res.status(404).json({ error: 'Medicine not found' })
+    const stock = Math.max(0, Number(quantity) || 0)
     const batch = await models.MedicineBatch.create({
       medicine: req.params.id,
       supplier: supplier && mongoose.isValidObjectId(supplier) ? supplier : null,
       batchNumber: batchNumber.trim(),
-      quantity: Number(quantity) || 0,
+      quantity: stock,
+      minimumStock: Math.max(0, Number(minimumStock) || 10),
       manufacturingDate: manufacturingDate || '',
       expiryDate: expiryDate || '',
       purchasePrice: Number(purchasePrice) || 0,
       sellingPrice: Number(sellingPrice) || 0,
       location: location?.trim() || ''
     })
+    if (stock > 0) await recordStockMovement({ medicine, batch, type: 'Opening stock', quantity: stock, previous: 0, balance: stock, reference: 'Batch creation' })
+    await refreshInventoryAndAlerts()
     res.status(201).json(batch)
   } catch (error) {
     res.status(500).json({ error: error.message })
@@ -391,21 +470,29 @@ app.post('/api/medicines/:id/batches', async (req, res) => {
 app.put('/api/batches/:id', async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid batch ID' })
-    const allowed = ['supplier', 'batchNumber', 'quantity', 'manufacturingDate', 'expiryDate', 'purchasePrice', 'sellingPrice', 'location']
+    const allowed = ['supplier', 'batchNumber', 'quantity', 'minimumStock', 'manufacturingDate', 'expiryDate', 'purchasePrice', 'sellingPrice', 'location']
     const updates = Object.fromEntries(Object.entries(req.body).filter(([key]) => allowed.includes(key)))
     if (updates.batchNumber !== undefined) {
       if (!String(updates.batchNumber).trim()) return res.status(400).json({ error: 'Batch number is required' })
       updates.batchNumber = String(updates.batchNumber).trim()
     }
-    for (const field of ['quantity', 'purchasePrice', 'sellingPrice']) {
+    for (const field of ['quantity', 'minimumStock', 'purchasePrice', 'sellingPrice']) {
       if (updates[field] !== undefined) updates[field] = Number(updates[field])
     }
     if (updates.supplier !== undefined) {
       if (updates.supplier && !mongoose.isValidObjectId(updates.supplier)) return res.status(400).json({ error: 'Invalid supplier ID' })
       updates.supplier = updates.supplier || null
     }
+    const existing = await models.MedicineBatch.findById(req.params.id)
+    if (!existing) return res.status(404).json({ error: 'Batch not found' })
+    const previous = existing.quantity
     const batch = await models.MedicineBatch.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true })
-    if (!batch) return res.status(404).json({ error: 'Batch not found' })
+    if (updates.quantity !== undefined && Number(updates.quantity) !== previous) {
+      const medicine = await models.Medicine.findById(existing.medicine)
+      const difference = Number(updates.quantity) - previous
+      await recordStockMovement({ medicine, batch, type: difference >= 0 ? 'Stock adjustment (+)' : 'Stock adjustment (-)', quantity: Math.abs(difference), previous, balance: batch.quantity, reference: 'Manual adjustment' })
+    }
+    await refreshInventoryAndAlerts()
     res.json(batch)
   } catch (error) {
     res.status(500).json({ error: error.message })
@@ -415,9 +502,45 @@ app.put('/api/batches/:id', async (req, res) => {
 app.delete('/api/batches/:id', async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid batch ID' })
-    const batch = await models.MedicineBatch.findByIdAndDelete(req.params.id)
+    const batch = await models.MedicineBatch.findById(req.params.id)
     if (!batch) return res.status(404).json({ error: 'Batch not found' })
+    const medicine = await models.Medicine.findById(batch.medicine)
+    await recordStockMovement({ medicine, batch, type: 'Stock removal', quantity: batch.quantity, previous: batch.quantity, balance: 0, reference: 'Batch deletion' })
+    await models.MedicineBatch.findByIdAndDelete(req.params.id)
+    await refreshInventoryAndAlerts()
     res.json({ message: 'Batch deleted successfully' })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.post('/api/stock-adjustments', async (req, res) => {
+  try {
+    const { batchId, quantity, mode = 'set', reference = 'Manual stock adjustment' } = req.body
+    if (!mongoose.isValidObjectId(batchId)) return res.status(400).json({ error: 'A valid batch is required' })
+    const batch = await models.MedicineBatch.findById(batchId)
+    if (!batch) return res.status(404).json({ error: 'Batch not found' })
+    const amount = Number(quantity)
+    if (!Number.isFinite(amount) || amount < 0) return res.status(400).json({ error: 'Quantity must be a non-negative number' })
+    const previous = batch.quantity
+    const next = mode === 'add' ? previous + amount : mode === 'remove' ? Math.max(0, previous - amount) : amount
+    if (mode === 'remove' && amount > previous) return res.status(409).json({ error: 'Cannot remove more stock than is available' })
+    batch.quantity = next
+    await batch.save()
+    if (next !== previous) {
+      const medicine = await models.Medicine.findById(batch.medicine)
+      await recordStockMovement({
+        medicine,
+        batch,
+        type: mode === 'add' ? 'Stock adjustment (+)' : mode === 'remove' ? 'Stock adjustment (-)' : 'Stock adjustment',
+        quantity: Math.abs(next - previous),
+        previous,
+        balance: next,
+        reference
+      })
+    }
+    await refreshInventoryAndAlerts()
+    res.json(batch)
   } catch (error) {
     res.status(500).json({ error: error.message })
   }
@@ -425,8 +548,9 @@ app.delete('/api/batches/:id', async (req, res) => {
 
 app.get('/api/inventory', async (req, res) => {
   try {
+    await refreshInventoryAndAlerts()
     const data = await models.Inventory.find()
-    res.json(data)
+    res.json(data.sort((a, b) => String(a.name).localeCompare(String(b.name))))
   } catch (error) {
     res.status(500).json({ error: error.message })
   }
@@ -443,8 +567,47 @@ app.get('/api/suppliers', async (req, res) => {
 
 app.get('/api/purchases', async (req, res) => {
   try {
-    const data = await models.Purchase.find()
+    const data = await models.Purchase.find().sort({ createdAt: -1 })
     res.json(data)
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.post('/api/purchases', async (req, res) => {
+  try {
+    const { reference, supplier, date, status, lineItems = [] } = req.body
+    if (!reference?.trim() || !supplier?.trim()) return res.status(400).json({ error: 'Reference and supplier are required' })
+    if (!Array.isArray(lineItems) || lineItems.length === 0) return res.status(400).json({ error: 'Add at least one purchase item' })
+
+    let itemCount = 0
+    let amount = 0
+    for (const line of lineItems) {
+      if (!mongoose.isValidObjectId(line.batchId)) return res.status(400).json({ error: 'A valid batch is required for every purchase item' })
+      const quantity = Math.max(0, Number(line.quantity) || 0)
+      if (quantity <= 0) return res.status(400).json({ error: 'Purchase quantities must be greater than zero' })
+      const batch = await models.MedicineBatch.findById(line.batchId)
+      if (!batch) return res.status(404).json({ error: 'Purchase batch not found' })
+      const previous = batch.quantity
+      batch.quantity = previous + quantity
+      if (line.purchasePrice !== undefined) batch.purchasePrice = Math.max(0, Number(line.purchasePrice) || 0)
+      await batch.save()
+      const medicine = await models.Medicine.findById(batch.medicine)
+      await recordStockMovement({ medicine, batch, type: 'Purchase received', quantity, previous, balance: batch.quantity, reference: reference.trim() })
+      itemCount += quantity
+      amount += quantity * (line.purchasePrice !== undefined ? Math.max(0, Number(line.purchasePrice) || 0) : batch.purchasePrice)
+    }
+    const purchase = await models.Purchase.create({
+      reference: reference.trim(),
+      supplier: supplier.trim(),
+      date: date || new Date().toISOString().slice(0, 10),
+      items: itemCount,
+      amount: `Rs. ${amount.toFixed(2)}`,
+      status: status || 'Completed',
+      lineItems
+    })
+    await refreshInventoryAndAlerts()
+    res.status(201).json(purchase)
   } catch (error) {
     res.status(500).json({ error: error.message })
   }
@@ -452,8 +615,48 @@ app.get('/api/purchases', async (req, res) => {
 
 app.get('/api/sales', async (req, res) => {
   try {
-    const data = await models.Sale.find()
+    const data = await models.Sale.find().sort({ createdAt: -1 })
     res.json(data)
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.post('/api/sales', async (req, res) => {
+  try {
+    const { invoice, customer, date, payment, status, lineItems = [] } = req.body
+    if (!invoice?.trim()) return res.status(400).json({ error: 'Invoice number is required' })
+    if (!Array.isArray(lineItems) || lineItems.length === 0) return res.status(400).json({ error: 'Add at least one sale item' })
+
+    let itemCount = 0
+    let total = 0
+    for (const line of lineItems) {
+      if (!mongoose.isValidObjectId(line.batchId)) return res.status(400).json({ error: 'A valid batch is required for every sale item' })
+      const quantity = Math.max(0, Number(line.quantity) || 0)
+      if (quantity <= 0) return res.status(400).json({ error: 'Sale quantities must be greater than zero' })
+      const batch = await models.MedicineBatch.findById(line.batchId)
+      if (!batch) return res.status(404).json({ error: 'Sale batch not found' })
+      if (batch.quantity < quantity) return res.status(409).json({ error: `Insufficient stock for batch ${batch.batchNumber}` })
+      const previous = batch.quantity
+      batch.quantity -= quantity
+      await batch.save()
+      const medicine = await models.Medicine.findById(batch.medicine)
+      await recordStockMovement({ medicine, batch, type: 'Sale', quantity, previous, balance: batch.quantity, reference: invoice.trim() })
+      itemCount += quantity
+      total += quantity * (line.sellingPrice !== undefined ? Math.max(0, Number(line.sellingPrice) || 0) : batch.sellingPrice)
+    }
+    const sale = await models.Sale.create({
+      invoice: invoice.trim(),
+      customer: customer?.trim() || 'Walk-in Customer',
+      date: date || new Date().toISOString().slice(0, 10),
+      items: itemCount,
+      payment: payment || 'Cash',
+      total: `Rs. ${total.toFixed(2)}`,
+      status: status || 'Completed',
+      lineItems
+    })
+    await refreshInventoryAndAlerts()
+    res.status(201).json(sale)
   } catch (error) {
     res.status(500).json({ error: error.message })
   }
@@ -470,7 +673,8 @@ app.get('/api/customers', async (req, res) => {
 
 app.get('/api/alerts', async (req, res) => {
   try {
-    const data = await models.Alert.find()
+    await refreshInventoryAndAlerts()
+    const data = await models.Alert.find().sort({ severity: 1, medicine: 1 })
     res.json(data)
   } catch (error) {
     res.status(500).json({ error: error.message })
@@ -488,7 +692,7 @@ app.get('/api/reports', async (req, res) => {
 
 app.get('/api/stock-history', async (req, res) => {
   try {
-    const data = await models.StockHistory.find()
+    const data = await models.StockHistory.find().sort({ createdAt: -1 })
     res.json(data)
   } catch (error) {
     res.status(500).json({ error: error.message })

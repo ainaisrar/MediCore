@@ -232,7 +232,11 @@ function DashboardOverview({ onNavigate }) {
 
   const batches = medicines.flatMap((medicine) => medicine.batches || [])
   const availableStock = batches.reduce((total, batch) => total + (Number(batch.quantity) || 0), 0)
-  const lowStock = batches.filter((batch) => Number(batch.quantity) > 0 && Number(batch.quantity) <= 10).length
+  const lowStock = batches.filter((batch) => {
+    const quantity = Number(batch.quantity) || 0
+    const minimum = batch.minimumStock !== undefined && batch.minimumStock !== null ? (Number(batch.minimumStock) || 0) : 10
+    return quantity <= minimum
+  }).length
   const expiredOrExpiring = batches.filter((batch) => batch.expiryDate && new Date(batch.expiryDate) <= new Date(now + 30 * 24 * 60 * 60 * 1000)).length
   const inStockRate = batches.length ? Math.round((batches.filter((batch) => Number(batch.quantity) > 0).length / batches.length) * 100) : 0
   const value = (number) => loading ? '...' : number.toLocaleString()
@@ -321,7 +325,7 @@ function MedicineCatalog() {
   }
   const openBatch = (medicine, batch = {}) => {
     setError('')
-    setForm({ medicineId: medicine._id, batchNumber: '', quantity: 0, manufacturingDate: '', expiryDate: '', purchasePrice: 0, sellingPrice: 0, location: '', ...batch, supplier: batch.supplier?._id || batch.supplier || '' })
+    setForm({ medicineId: medicine._id, batchNumber: '', quantity: 0, minimumStock: 10, manufacturingDate: '', expiryDate: '', purchasePrice: 0, sellingPrice: 0, location: '', ...batch, minimumStock: batch.minimumStock ?? 10, supplier: batch.supplier?._id || batch.supplier || '' })
     setModal({ type: 'batch', item: batch._id ? batch : null, medicine })
   }
   const save = async (event) => {
@@ -405,7 +409,7 @@ function MedicineCatalog() {
               <label className="settings-field"><span>Status</span><select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}><option>In Stock</option><option>Low Stock</option><option>Out of Stock</option></select></label>
             </> : <>
               <label className="settings-field"><span>Supplier</span><select value={form.supplier || ''} onChange={(event) => setForm({ ...form, supplier: event.target.value })}><option value="">No supplier</option>{suppliers.map((supplier) => <option key={supplier._id} value={supplier._id}>{supplier.name}</option>)}</select></label>
-              {[['batchNumber', 'Batch number'], ['quantity', 'Quantity'], ['manufacturingDate', 'Manufacturing date'], ['expiryDate', 'Expiry date'], ['purchasePrice', 'Purchase price'], ['sellingPrice', 'Selling price'], ['location', 'Location']].map(([field, label]) => <label key={field} className="settings-field"><span>{label}</span><input type={['manufacturingDate', 'expiryDate'].includes(field) ? 'date' : ['quantity', 'purchasePrice', 'sellingPrice'].includes(field) ? 'number' : 'text'} min="0" required={field === 'batchNumber'} value={form[field] ?? ''} onChange={(event) => setForm({ ...form, [field]: event.target.value })} /></label>)}
+              {[['batchNumber', 'Batch number'], ['quantity', 'Quantity'], ['minimumStock', 'Low-stock threshold'], ['manufacturingDate', 'Manufacturing date'], ['expiryDate', 'Expiry date'], ['purchasePrice', 'Purchase price'], ['sellingPrice', 'Selling price'], ['location', 'Location']].map(([field, label]) => <label key={field} className="settings-field"><span>{label}</span><input type={['manufacturingDate', 'expiryDate'].includes(field) ? 'date' : ['quantity', 'minimumStock', 'purchasePrice', 'sellingPrice'].includes(field) ? 'number' : 'text'} min="0" required={field === 'batchNumber'} value={form[field] ?? ''} onChange={(event) => setForm({ ...form, [field]: event.target.value })} /></label>)}
             </>}
             {error && <div className="login-error-message">{error}</div>}
           </div>
@@ -418,7 +422,56 @@ function MedicineCatalog() {
 
 function InventoryStock() {
   const [query, setQuery] = useState('')
-  const inventory = []
+  const [inventory, setInventory] = useState([])
+  const [batches, setBatches] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [modal, setModal] = useState(false)
+  const [form, setForm] = useState({ batchId: '', mode: 'set', quantity: 0, reference: '' })
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      const [inventoryResponse, medicineResponse] = await Promise.all([
+        fetch(`${API_BASE}/api/inventory`),
+        fetch(`${API_BASE}/api/medicines`)
+      ])
+      const inventoryData = await readApiResponse(inventoryResponse)
+      const medicineData = await readApiResponse(medicineResponse)
+      if (!inventoryResponse.ok) throw new Error(inventoryData.error || 'Unable to load inventory')
+      if (!medicineResponse.ok) throw new Error(medicineData.error || 'Unable to load batches')
+      setInventory(inventoryData)
+      setBatches(medicineData.flatMap((medicine) => (medicine.batches || []).map((batch) => ({ ...batch, medicineName: medicine.brandName || medicine.name }))))
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+  useEffect(() => { load() }, [])
+
+  const saveAdjustment = async (event) => {
+    event.preventDefault()
+    setError('')
+    try {
+      const response = await fetch(`${API_BASE}/api/stock-adjustments`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
+      const data = await readApiResponse(response)
+      if (!response.ok) throw new Error(data.error || 'Unable to adjust stock')
+      setModal(false)
+      await load()
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  const exportCsv = () => {
+    const rows = [['Medicine', 'Batch', 'Available', 'Reserved', 'Minimum', 'Status', 'Location', 'Expiry'], ...filteredInventory.map((item) => [item.name, item.batch, item.available, item.reserved, item.minimum, item.status, item.location, item.expiry])]
+    const csv = rows.map((row) => row.map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\n')
+    const link = document.createElement('a')
+    link.href = `data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`
+    link.download = 'inventory.csv'
+    link.click()
+  }
   const filteredInventory = inventory.filter((item) =>
     Object.values(item).some((value) => String(value).toLowerCase().includes(query.toLowerCase())),
   )
@@ -431,12 +484,11 @@ function InventoryStock() {
             <h2>Current inventory</h2>
             <p>Track available quantities and stock by batch.</p>
           </div>
-          <button className="primary-button"><Icon name="cube" size={19} /> Adjust stock</button>
+          <button className="primary-button" type="button" onClick={() => { setError(''); setForm({ batchId: batches[0]?._id || '', mode: 'set', quantity: 0, reference: '' }); setModal(true) }}><Icon name="cube" size={19} /> Adjust stock</button>
         </div>
         <div className="inventory-toolbar">
           <label className="catalog-search"><Icon name="search" size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search current inventory..." aria-label="Search current inventory" /></label>
-          <button className="catalog-button"><Icon name="filter" size={19} /> Filters</button>
-          <button className="catalog-button"><Icon name="download" size={18} /> Export</button>
+          <button className="catalog-button" type="button" onClick={exportCsv}><Icon name="download" size={18} /> Export</button>
         </div>
         <div className="inventory-table-wrap">
           <table className="medicine-table inventory-table">
@@ -445,13 +497,27 @@ function InventoryStock() {
               <td><strong>{item.name}</strong></td><td>{item.batch}</td><td>{item.available}</td><td>{item.reserved}</td><td>{item.minimum}</td><td>{item.status}</td><td>{item.location}</td>
             </tr>)}</tbody>
           </table>
-          {filteredInventory.length === 0 && <div className="inventory-empty-space" aria-label="No inventory records" />}
+          {loading && <div className="inventory-empty-space">Loading inventory...</div>}
+          {!loading && filteredInventory.length === 0 && <div className="inventory-empty-space" aria-label="No inventory records" />}
         </div>
         <div className="medicine-footer">
           <span>Showing {filteredInventory.length} of {inventory.length} records</span>
           <div className="pagination"><button disabled>Previous</button><button className="current-page">1</button><button disabled>Next</button></div>
         </div>
       </section>
+      {modal && <div className="modal-backdrop" onClick={() => setModal(false)}>
+        <form className="modal-card" onSubmit={saveAdjustment} onClick={(event) => event.stopPropagation()}>
+          <div className="modal-header"><div><h3>Adjust stock</h3><p>Set, add, or remove units for a medicine batch.</p></div><button className="modal-close" type="button" onClick={() => setModal(false)} aria-label="Close"><Icon name="close" size={18} /></button></div>
+          <div className="modal-body medicine-form">
+            <label className="settings-field"><span>Medicine batch</span><select value={form.batchId} onChange={(event) => setForm({ ...form, batchId: event.target.value })} required><option value="">Select batch</option>{batches.map((batch) => <option key={batch._id} value={batch._id}>{batch.medicineName} - {batch.batchNumber} ({batch.quantity} units)</option>)}</select></label>
+            <label className="settings-field"><span>Adjustment type</span><select value={form.mode} onChange={(event) => setForm({ ...form, mode: event.target.value })}><option value="set">Set exact quantity</option><option value="add">Add incoming units</option><option value="remove">Remove units</option></select></label>
+            <label className="settings-field"><span>Quantity</span><input type="number" min="0" required value={form.quantity} onChange={(event) => setForm({ ...form, quantity: event.target.value })} /></label>
+            <label className="settings-field"><span>Reference / reason</span><input value={form.reference} onChange={(event) => setForm({ ...form, reference: event.target.value })} placeholder="Damage, correction, count, etc." /></label>
+            {error && <div className="login-error-message">{error}</div>}
+          </div>
+          <div className="modal-footer"><button className="secondary-button" type="button" onClick={() => setModal(false)}>Cancel</button><button className="primary-button" type="submit">Apply adjustment</button></div>
+        </form>
+      </div>}
     </div>
   )
 }
@@ -476,7 +542,6 @@ function SupplierDirectory() {
         <div className="supplier-toolbar">
           <label className="catalog-search"><Icon name="search" size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search supplier directory..." aria-label="Search supplier directory" /></label>
           <button className="catalog-button"><Icon name="filter" size={19} /> Filters</button>
-          <button className="catalog-button"><Icon name="download" size={18} /> Export</button>
         </div>
         <div className="supplier-table-wrap">
           <table className="medicine-table supplier-table">
@@ -498,7 +563,40 @@ function SupplierDirectory() {
 
 function PurchaseOrders() {
   const [query, setQuery] = useState('')
-  const purchases = []
+  const [purchases, setPurchases] = useState([])
+  const [batches, setBatches] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [modal, setModal] = useState(false)
+  const [form, setForm] = useState({ reference: '', supplier: '', date: '', batchId: '', quantity: 1, purchasePrice: 0 })
+  const load = async () => {
+    setLoading(true)
+    try {
+      const [purchaseResponse, medicineResponse] = await Promise.all([fetch(`${API_BASE}/api/purchases`), fetch(`${API_BASE}/api/medicines`)])
+      const purchaseData = await readApiResponse(purchaseResponse)
+      const medicineData = await readApiResponse(medicineResponse)
+      if (!purchaseResponse.ok) throw new Error(purchaseData.error || 'Unable to load purchases')
+      if (!medicineResponse.ok) throw new Error(medicineData.error || 'Unable to load medicines')
+      setPurchases(purchaseData)
+      setBatches(medicineData.flatMap((medicine) => (medicine.batches || []).map((batch) => ({ ...batch, medicineName: medicine.brandName || medicine.name }))))
+    } catch (err) { setError(err.message) } finally { setLoading(false) }
+  }
+  useEffect(() => { load() }, [])
+  const save = async (event) => {
+    event.preventDefault()
+    setError('')
+    try {
+      const response = await fetch(`${API_BASE}/api/purchases`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...form, lineItems: [{ batchId: form.batchId, quantity: Number(form.quantity), purchasePrice: Number(form.purchasePrice) }] })
+      })
+      const data = await readApiResponse(response)
+      if (!response.ok) throw new Error(data.error || 'Unable to record purchase')
+      setModal(false)
+      await load()
+    } catch (err) { setError(err.message) }
+  }
   const filteredPurchases = purchases.filter((purchase) =>
     Object.values(purchase).some((value) => String(value).toLowerCase().includes(query.toLowerCase())),
   )
@@ -507,38 +605,74 @@ function PurchaseOrders() {
     <div className="purchase-content">
       <section className="purchase-panel">
         <div className="purchase-heading">
-          <div>
-            <h2>Purchase orders</h2>
-            <p>Record incoming stock and supplier invoices.</p>
-          </div>
-          <button className="primary-button"><Icon name="box" size={19} /> New purchase</button>
+          <div><h2>Purchase orders</h2><p>Record incoming stock and supplier invoices.</p></div>
+          <button className="primary-button" type="button" onClick={() => { setError(''); setForm({ reference: `PO-${Date.now().toString().slice(-6)}`, supplier: '', date: new Date().toISOString().slice(0, 10), batchId: batches[0]?._id || '', quantity: 1, purchasePrice: 0 }); setModal(true) }}><Icon name="box" size={19} /> New purchase</button>
         </div>
-        <div className="purchase-toolbar">
-          <label className="catalog-search"><Icon name="search" size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search purchase orders..." aria-label="Search purchase orders" /></label>
-          <button className="catalog-button"><Icon name="filter" size={19} /> Filters</button>
-          <button className="catalog-button"><Icon name="download" size={18} /> Export</button>
-        </div>
+        <div className="purchase-toolbar"><label className="catalog-search"><Icon name="search" size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search purchase orders..." /></label></div>
         <div className="purchase-table-wrap">
-          <table className="medicine-table purchase-table">
-            <thead><tr><th>Reference</th><th>Supplier</th><th>Date</th><th>Items</th><th>Amount</th><th>Status</th></tr></thead>
-            <tbody>{filteredPurchases.map((purchase) => <tr key={purchase.reference}>
-              <td><strong>{purchase.reference}</strong></td><td>{purchase.supplier}</td><td>{purchase.date}</td><td>{purchase.items}</td><td>{purchase.amount}</td><td>{purchase.status}</td>
-            </tr>)}</tbody>
+          <table className="medicine-table purchase-table"><thead><tr><th>Reference</th><th>Supplier</th><th>Date</th><th>Items</th><th>Amount</th><th>Status</th></tr></thead>
+            <tbody>{filteredPurchases.map((purchase) => <tr key={purchase._id}><td><strong>{purchase.reference}</strong></td><td>{purchase.supplier}</td><td>{purchase.date}</td><td>{purchase.items}</td><td>{purchase.amount}</td><td>{purchase.status}</td></tr>)}</tbody>
           </table>
-          {filteredPurchases.length === 0 && <div className="purchase-empty-space" aria-label="No purchase order records" />}
+          {loading && <div className="purchase-empty-space">Loading purchases...</div>}
+          {!loading && filteredPurchases.length === 0 && <div className="purchase-empty-space" aria-label="No purchase order records" />}
         </div>
-        <div className="medicine-footer">
-          <span>Showing {filteredPurchases.length} of {purchases.length} records</span>
-          <div className="pagination"><button disabled>Previous</button><button className="current-page">1</button><button disabled>Next</button></div>
-        </div>
+        <div className="medicine-footer"><span>Showing {filteredPurchases.length} of {purchases.length} records</span></div>
       </section>
+      {modal && <div className="modal-backdrop" onClick={() => setModal(false)}>
+        <form className="modal-card" onSubmit={save} onClick={(event) => event.stopPropagation()}>
+          <div className="modal-header"><div><h3>New purchase</h3><p>Receiving stock will increase the selected batch automatically.</p></div><button className="modal-close" type="button" onClick={() => setModal(false)}><Icon name="close" size={18} /></button></div>
+          <div className="modal-body medicine-form">
+            <label className="settings-field"><span>Reference</span><input required value={form.reference} onChange={(event) => setForm({ ...form, reference: event.target.value })} /></label>
+            <label className="settings-field"><span>Supplier</span><input required value={form.supplier} onChange={(event) => setForm({ ...form, supplier: event.target.value })} /></label>
+            <label className="settings-field"><span>Date</span><input type="date" required value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} /></label>
+            <label className="settings-field"><span>Medicine batch</span><select required value={form.batchId} onChange={(event) => setForm({ ...form, batchId: event.target.value })}><option value="">Select batch</option>{batches.map((batch) => <option key={batch._id} value={batch._id}>{batch.medicineName} - {batch.batchNumber}</option>)}</select></label>
+            <label className="settings-field"><span>Quantity received</span><input type="number" min="1" required value={form.quantity} onChange={(event) => setForm({ ...form, quantity: event.target.value })} /></label>
+            <label className="settings-field"><span>Unit purchase price</span><input type="number" min="0" required value={form.purchasePrice} onChange={(event) => setForm({ ...form, purchasePrice: event.target.value })} /></label>
+            {error && <div className="login-error-message">{error}</div>}
+          </div>
+          <div className="modal-footer"><button className="secondary-button" type="button" onClick={() => setModal(false)}>Cancel</button><button className="primary-button" type="submit">Receive stock</button></div>
+        </form>
+      </div>}
     </div>
   )
 }
 
 function SalesBilling() {
   const [query, setQuery] = useState('')
-  const sales = []
+  const [sales, setSales] = useState([])
+  const [batches, setBatches] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [modal, setModal] = useState(false)
+  const [form, setForm] = useState({ invoice: '', customer: 'Walk-in Customer', date: '', payment: 'Cash', batchId: '', quantity: 1, sellingPrice: 0 })
+  const load = async () => {
+    setLoading(true)
+    try {
+      const [saleResponse, medicineResponse] = await Promise.all([fetch(`${API_BASE}/api/sales`), fetch(`${API_BASE}/api/medicines`)])
+      const saleData = await readApiResponse(saleResponse)
+      const medicineData = await readApiResponse(medicineResponse)
+      if (!saleResponse.ok) throw new Error(saleData.error || 'Unable to load sales')
+      if (!medicineResponse.ok) throw new Error(medicineData.error || 'Unable to load medicines')
+      setSales(saleData)
+      setBatches(medicineData.flatMap((medicine) => (medicine.batches || []).map((batch) => ({ ...batch, medicineName: medicine.brandName || medicine.name }))))
+    } catch (err) { setError(err.message) } finally { setLoading(false) }
+  }
+  useEffect(() => { load() }, [])
+  const save = async (event) => {
+    event.preventDefault()
+    setError('')
+    try {
+      const response = await fetch(`${API_BASE}/api/sales`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...form, lineItems: [{ batchId: form.batchId, quantity: Number(form.quantity), sellingPrice: Number(form.sellingPrice) }] })
+      })
+      const data = await readApiResponse(response)
+      if (!response.ok) throw new Error(data.error || 'Unable to record sale')
+      setModal(false)
+      await load()
+    } catch (err) { setError(err.message) }
+  }
   const filteredSales = sales.filter((sale) =>
     Object.values(sale).some((value) => String(value).toLowerCase().includes(query.toLowerCase())),
   )
@@ -551,7 +685,12 @@ function SalesBilling() {
             <h2>Sales &amp; billing</h2>
             <p>Generate invoices, process counter sales, and track transactions.</p>
           </div>
-          <button className="primary-button"><Icon name="cart" size={19} /> Create sale</button>
+          <button className="primary-button" type="button" onClick={() => {
+            const batch = batches.find((item) => Number(item.quantity) > 0) || batches[0]
+            setError('')
+            setForm({ invoice: `INV-${Date.now().toString().slice(-6)}`, customer: 'Walk-in Customer', date: new Date().toISOString().slice(0, 10), payment: 'Cash', batchId: batch?._id || '', quantity: 1, sellingPrice: batch?.sellingPrice || 0 })
+            setModal(true)
+          }}><Icon name="cart" size={19} /> Create sale</button>
         </div>
         <div className="billing-toolbar">
           <label className="catalog-search"><Icon name="search" size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search sales invoices..." aria-label="Search sales invoices" /></label>
@@ -565,13 +704,33 @@ function SalesBilling() {
               <td><strong>{sale.invoice}</strong></td><td>{sale.customer}</td><td>{sale.date}</td><td>{sale.items}</td><td>{sale.payment}</td><td>{sale.total}</td><td>{sale.status}</td>
             </tr>)}</tbody>
           </table>
-          {filteredSales.length === 0 && <div className="billing-empty-space" aria-label="No sales records" />}
+          {loading && <div className="billing-empty-space">Loading sales...</div>}
+          {!loading && filteredSales.length === 0 && <div className="billing-empty-space" aria-label="No sales records" />}
         </div>
         <div className="medicine-footer">
           <span>Showing {filteredSales.length} of {sales.length} records</span>
           <div className="pagination"><button disabled>Previous</button><button className="current-page">1</button><button disabled>Next</button></div>
         </div>
       </section>
+      {modal && <div className="modal-backdrop" onClick={() => setModal(false)}>
+        <form className="modal-card" onSubmit={save} onClick={(event) => event.stopPropagation()}>
+          <div className="modal-header"><div><h3>Create sale</h3><p>Completing the sale decreases the selected batch stock automatically.</p></div><button className="modal-close" type="button" onClick={() => setModal(false)}><Icon name="close" size={18} /></button></div>
+          <div className="modal-body medicine-form">
+            <label className="settings-field"><span>Invoice</span><input required value={form.invoice} onChange={(event) => setForm({ ...form, invoice: event.target.value })} /></label>
+            <label className="settings-field"><span>Customer</span><input value={form.customer} onChange={(event) => setForm({ ...form, customer: event.target.value })} /></label>
+            <label className="settings-field"><span>Date</span><input type="date" required value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} /></label>
+            <label className="settings-field"><span>Payment</span><select value={form.payment} onChange={(event) => setForm({ ...form, payment: event.target.value })}><option>Cash</option><option>Card</option><option>Bank transfer</option></select></label>
+            <label className="settings-field"><span>Medicine batch</span><select required value={form.batchId} onChange={(event) => {
+              const batch = batches.find((item) => item._id === event.target.value)
+              setForm({ ...form, batchId: event.target.value, sellingPrice: batch?.sellingPrice || 0 })
+            }}><option value="">Select batch</option>{batches.map((batch) => <option key={batch._id} value={batch._id}>{batch.medicineName} - {batch.batchNumber} ({batch.quantity} available)</option>)}</select></label>
+            <label className="settings-field"><span>Quantity sold</span><input type="number" min="1" required value={form.quantity} onChange={(event) => setForm({ ...form, quantity: event.target.value })} /></label>
+            <label className="settings-field"><span>Unit selling price</span><input type="number" min="0" required value={form.sellingPrice} onChange={(event) => setForm({ ...form, sellingPrice: event.target.value })} /></label>
+            {error && <div className="login-error-message">{error}</div>}
+          </div>
+          <div className="modal-footer"><button className="secondary-button" type="button" onClick={() => setModal(false)}>Cancel</button><button className="primary-button" type="submit">Complete sale</button></div>
+        </form>
+      </div>}
     </div>
   )
 }
@@ -658,7 +817,17 @@ function ReportsDirectory() {
 
 function StockHistory() {
   const [query, setQuery] = useState('')
-  const stockHistory = []
+  const [stockHistory, setStockHistory] = useState([])
+  const [loading, setLoading] = useState(true)
+  useEffect(() => {
+    fetch(`${API_BASE}/api/stock-history`)
+      .then((response) => readApiResponse(response).then((data) => {
+        if (!response.ok) throw new Error(data.error || 'Unable to load stock history')
+        setStockHistory(data)
+      }))
+      .catch(() => setStockHistory([]))
+      .finally(() => setLoading(false))
+  }, [])
   const filteredHistory = stockHistory.filter((item) =>
     Object.values(item).some((value) => String(value).toLowerCase().includes(query.toLowerCase())),
   )
@@ -685,7 +854,8 @@ function StockHistory() {
               <td>{item.date}</td><td><strong>{item.medicine}</strong></td><td>{item.batch}</td><td>{item.type}</td><td>{item.quantity}</td><td>{item.previous}</td><td>{item.balance}</td><td>{item.reference}</td>
             </tr>)}</tbody>
           </table>
-          {filteredHistory.length === 0 && <div className="history-empty-space" aria-label="No stock history records" />}
+          {loading && <div className="history-empty-space">Loading stock history...</div>}
+          {!loading && filteredHistory.length === 0 && <div className="history-empty-space" aria-label="No stock history records" />}
         </div>
         <div className="medicine-footer">
           <span>Showing {filteredHistory.length} of {stockHistory.length} records</span>
@@ -699,7 +869,20 @@ function StockHistory() {
 function Alerts({ notificationsEnabled, onToggleNotifications, showSidebarCount, onToggleSidebarCount }) {
   const [query, setQuery] = useState('')
   const [isConfigOpen, setIsConfigOpen] = useState(false)
-  const alerts = []
+  const [alerts, setAlerts] = useState([])
+  const [loading, setLoading] = useState(true)
+  useEffect(() => {
+    fetch(`${API_BASE}/api/alerts`)
+      .then((response) => readApiResponse(response).then((data) => {
+        if (!response.ok) throw new Error(data.error || 'Unable to load alerts')
+        setAlerts(data)
+      }))
+      .catch(() => setAlerts([]))
+      .finally(() => setLoading(false))
+  }, [])
+  const lowStockCount = alerts.filter((item) => item.alert !== 'Near expiry' && item.alert !== 'Expired').length
+  const nearExpiryCount = alerts.filter((item) => item.alert === 'Near expiry').length
+  const expiredCount = alerts.filter((item) => item.alert === 'Expired').length
   const filteredAlerts = alerts.filter((item) =>
     Object.values(item).some((value) => String(value).toLowerCase().includes(query.toLowerCase())),
   )
@@ -708,15 +891,15 @@ function Alerts({ notificationsEnabled, onToggleNotifications, showSidebarCount,
     <div className="alerts-content">
       <section className="alert-summary-grid" aria-label="Alert summary">
         <article className="alert-summary-card low-stock">
-          <div><span>Low stock</span><strong>18</strong><small><i>↗</i> 5 critical items</small></div>
+          <div><span>Low stock</span><strong>{loading ? '...' : lowStockCount}</strong><small><i>↗</i> Batch stock at threshold</small></div>
           <div className="alert-summary-icon"><Icon name="cube" size={25} /></div>
         </article>
         <article className="alert-summary-card near-expiry">
-          <div><span>Near expiry</span><strong>9</strong><small><i>↗</i> Within next 30 days</small></div>
+          <div><span>Near expiry</span><strong>{loading ? '...' : nearExpiryCount}</strong><small><i>↗</i> Within next 30 days</small></div>
           <div className="alert-summary-icon"><Icon name="history" size={25} /></div>
         </article>
         <article className="alert-summary-card expired">
-          <div><span>Expired</span><strong>4</strong><small><i>↗</i> Blocked from sale</small></div>
+          <div><span>Expired</span><strong>{loading ? '...' : expiredCount}</strong><small><i>↗</i> Blocked from sale</small></div>
           <div className="alert-summary-icon"><Icon name="close" size={25} /></div>
         </article>
       </section>
@@ -738,11 +921,12 @@ function Alerts({ notificationsEnabled, onToggleNotifications, showSidebarCount,
         <div className="alerts-table-wrap">
           <table className="medicine-table alerts-table">
             <thead><tr><th>Alert</th><th>Medicine</th><th>Batch</th><th>Current Stock</th><th>Threshold</th><th>Expiry</th><th>Severity</th></tr></thead>
-            <tbody>{filteredAlerts.map((item) => <tr key={item.id}>
+            <tbody>{filteredAlerts.map((item) => <tr key={item._id}>
               <td><strong>{item.alert}</strong></td><td>{item.medicine}</td><td>{item.batch}</td><td>{item.stock}</td><td>{item.threshold}</td><td>{item.expiry}</td><td>{item.severity}</td>
             </tr>)}</tbody>
           </table>
-          {filteredAlerts.length === 0 && <div className="alerts-empty-space" aria-label="No alert records" />}
+          {loading && <div className="alerts-empty-space">Loading alerts...</div>}
+          {!loading && filteredAlerts.length === 0 && <div className="alerts-empty-space" aria-label="No alert records" />}
         </div>
         <div className="medicine-footer">
           <span>Showing {filteredAlerts.length} of {alerts.length} records</span>
@@ -935,6 +1119,7 @@ function App() {
   const [activePage, setActivePage] = useState('Dashboard')
   const [notificationsEnabled, setNotificationsEnabled] = useState(true)
   const [showSidebarCount, setShowSidebarCount] = useState(true)
+  const [alertCount, setAlertCount] = useState(0)
   const [currentDate] = useState(() => new Date())
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
@@ -992,6 +1177,19 @@ function App() {
         })
     }
   }, [])
+
+  useEffect(() => {
+    if (!signedIn) return undefined
+    const loadAlertCount = () => {
+      fetch(`${API_BASE}/api/alerts`)
+        .then((response) => readApiResponse(response))
+        .then((data) => setAlertCount(Array.isArray(data) ? data.length : 0))
+        .catch(() => setAlertCount(0))
+    }
+    loadAlertCount()
+    const interval = window.setInterval(loadAlertCount, 30000)
+    return () => window.clearInterval(interval)
+  }, [signedIn])
 
   useEffect(() => {
     if (!isProfileMenuOpen) return undefined
@@ -1151,7 +1349,7 @@ function App() {
         <nav className="navigation" aria-label="Main navigation">
           {visibleNavigation.map(([icon, label]) => (
             <a className={activePage === label ? 'nav-item active' : 'nav-item'} href={`#${label.toLowerCase().replaceAll(' ', '-')}`} onClick={(event) => { event.preventDefault(); setActivePage(label) }} key={label}>
-              <Icon name={icon} /><span>{label}</span>{label === 'Alerts' && showSidebarCount && <b className="alert-count">0</b>}
+              <Icon name={icon} /><span>{label}</span>{label === 'Alerts' && showSidebarCount && alertCount > 0 && <b className="alert-count">{alertCount}</b>}
             </a>
           ))}
         </nav>
