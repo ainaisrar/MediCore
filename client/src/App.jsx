@@ -933,42 +933,913 @@ function CustomerDirectory() {
   )
 }
 
-function ReportsDirectory() {
+function ReportsDirectory({ canEdit }) {
+  const [analytics, setAnalytics] = useState(null)
+  const [reports, setReports] = useState([])
+  const [suppliers, setSuppliers] = useState([])
+  const [salesList, setSalesList] = useState([])
+  const [purchasesList, setPurchasesList] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState('sales')
+  const [salesSubTab, setSalesSubTab] = useState('daily')
+  const [inventorySubTab, setInventorySubTab] = useState('current')
+  const [purchasesSubTab, setPurchasesSubTab] = useState('supplier')
   const [query, setQuery] = useState('')
-  const reports = []
-  const filteredReports = reports.filter((report) =>
-    Object.values(report).some((value) => String(value).toLowerCase().includes(query.toLowerCase())),
+  const [dateFilter, setDateFilter] = useState({ start: '', end: '' })
+  const [isGenModalOpen, setIsGenModalOpen] = useState(false)
+  const [genForm, setGenForm] = useState({
+    category: 'Sales',
+    type: 'Daily Sales',
+    startDate: '',
+    endDate: '',
+    supplierId: ''
+  })
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [genError, setGenError] = useState('')
+  const [selectedReport, setSelectedReport] = useState(null)
+
+  const loadData = async () => {
+    setLoading(true)
+    try {
+      const [analyticsRes, reportsRes, suppliersRes, salesRes, purchasesRes] = await Promise.all([
+        fetch(`${API_BASE}/api/reports/analytics`),
+        fetch(`${API_BASE}/api/reports`),
+        fetch(`${API_BASE}/api/suppliers`),
+        fetch(`${API_BASE}/api/sales`),
+        fetch(`${API_BASE}/api/purchases`)
+      ])
+      const [analyticsData, reportsData, suppliersData, salesData, purchasesData] = await Promise.all([
+        readApiResponse(analyticsRes),
+        readApiResponse(reportsRes),
+        readApiResponse(suppliersRes),
+        readApiResponse(salesRes),
+        readApiResponse(purchasesRes)
+      ])
+      if (analyticsRes.ok) setAnalytics(analyticsData)
+      if (reportsRes.ok) setReports(Array.isArray(reportsData) ? reportsData : [])
+      if (suppliersRes.ok) setSuppliers(Array.isArray(suppliersData) ? suppliersData : [])
+      if (salesRes.ok) setSalesList(Array.isArray(salesData) ? salesData : [])
+      if (purchasesRes.ok) setPurchasesList(Array.isArray(purchasesData) ? purchasesData : [])
+    } catch {
+      setReports([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadData()
+  }, [])
+
+  const handleOpenGenerateModal = () => {
+    const cat = activeTab === 'inventory' ? 'Inventory' : activeTab === 'purchases' ? 'Purchases' : 'Sales'
+    let typ = 'Daily Sales'
+    if (cat === 'Sales') {
+      if (salesSubTab === 'monthly') typ = 'Monthly Sales'
+      else if (salesSubTab === 'range') typ = 'Sales by Date Range'
+      else typ = 'Daily Sales'
+    } else if (cat === 'Inventory') {
+      if (inventorySubTab === 'low-stock') typ = 'Low Stock Audit'
+      else if (inventorySubTab === 'expired') typ = 'Expired Medicines Audit'
+      else if (inventorySubTab === 'near-expiry') typ = 'Near Expiry Audit'
+      else typ = 'Current Stock Audit'
+    } else if (cat === 'Purchases') {
+      if (purchasesSubTab === 'supplier') typ = 'Purchases by Supplier'
+      else if (purchasesSubTab === 'date') typ = 'Purchases by Date Range'
+      else typ = 'Purchase History'
+    }
+
+    setGenForm({
+      category: cat,
+      type: typ,
+      startDate: new Date().toISOString().slice(0, 10),
+      endDate: new Date().toISOString().slice(0, 10),
+      supplierId: suppliers[0]?.name || ''
+    })
+    setGenError('')
+    setIsGenModalOpen(true)
+  }
+
+  const handleCategoryChange = (cat) => {
+    let typ = 'Daily Sales'
+    if (cat === 'Inventory') typ = 'Current Stock Audit'
+    else if (cat === 'Purchases') typ = 'Purchases by Supplier'
+    setGenForm((prev) => ({
+      ...prev,
+      category: cat,
+      type: typ
+    }))
+  }
+
+  const handleGenerate = async (e) => {
+    e.preventDefault()
+    setIsGenerating(true)
+    setGenError('')
+    try {
+      const res = await authenticatedFetch(`${API_BASE}/api/reports/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(genForm)
+      })
+      const data = await readApiResponse(res)
+      if (!res.ok) throw new Error(data.error || 'Failed to generate report')
+      setIsGenModalOpen(false)
+      await loadData()
+      setSelectedReport(data)
+    } catch (err) {
+      setGenError(err.message)
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
+  const handleDeleteReport = async (reportId) => {
+    if (!window.confirm('Are you sure you want to delete this generated report record?')) return
+    try {
+      const res = await authenticatedFetch(`${API_BASE}/api/reports/${reportId}`, {
+        method: 'DELETE'
+      })
+      if (!res.ok) {
+        const data = await readApiResponse(res)
+        throw new Error(data.error || 'Failed to delete report')
+      }
+      setReports((prev) => prev.filter((r) => (r._id || r.id) !== reportId))
+      if (selectedReport && (selectedReport._id || selectedReport.id) === reportId) {
+        setSelectedReport(null)
+      }
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  const exportToCSV = (filename, headers, rows) => {
+    const escapeCell = (val) => {
+      const str = String(val ?? '')
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`
+      }
+      return str
+    }
+    const csvContent = [
+      headers.map(escapeCell).join(','),
+      ...rows.map((row) => row.map(escapeCell).join(','))
+    ].join('\r\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', filename.endsWith('.csv') ? filename : `${filename}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
+  const normQuery = query.trim().toLowerCase()
+
+  const filteredReports = reports.filter((r) =>
+    [r.name, r.category, r.period, r.author, r.status].some((v) => String(v || '').toLowerCase().includes(normQuery))
   )
+
+  const dailySales = analytics?.sales?.dailySales || analytics?.sales?.dailyBreakdown || []
+  const filteredDailySales = dailySales.filter((r) => String(r.date || '').toLowerCase().includes(normQuery))
+
+  const monthlySales = analytics?.sales?.monthlySales || analytics?.sales?.monthlyBreakdown || []
+  const filteredMonthlySales = monthlySales.filter((r) => String(r.month || '').toLowerCase().includes(normQuery))
+
+  const detailedSales = salesList.length > 0 ? salesList : (analytics?.sales?.recentSales || [])
+  const filteredDetailedSales = detailedSales.filter((r) => {
+    const matchesQuery = [r.invoice, r.customer, r.payment].some((v) => String(v || '').toLowerCase().includes(normQuery))
+    const sDate = (r.date || '').slice(0, 10)
+    const matchesDate = (!dateFilter.start || sDate >= dateFilter.start) && (!dateFilter.end || sDate <= dateFilter.end)
+    return matchesQuery && matchesDate
+  })
+
+  const stockValuation = analytics?.inventory?.currentStock || analytics?.inventory?.stockValuationItems || []
+  const filteredStockValuation = stockValuation.filter((r) => [r.medicineName, r.medicine, r.batchNumber, r.batch].some((v) => String(v || '').toLowerCase().includes(normQuery)))
+
+  const lowStock = analytics?.inventory?.lowStockList || analytics?.inventory?.lowStockItems || []
+  const filteredLowStock = lowStock.filter((r) => [r.medicineName, r.medicine, r.category].some((v) => String(v || '').toLowerCase().includes(normQuery)))
+
+  const expired = analytics?.inventory?.expiredList || analytics?.inventory?.expiredItems || []
+  const filteredExpired = expired.filter((r) => [r.medicineName, r.medicine, r.batchNumber, r.batch].some((v) => String(v || '').toLowerCase().includes(normQuery)))
+
+  const nearExpiry = analytics?.inventory?.nearExpiryList || analytics?.inventory?.nearExpiryItems || []
+  const filteredNearExpiry = nearExpiry.filter((r) => [r.medicineName, r.medicine, r.batchNumber, r.batch].some((v) => String(v || '').toLowerCase().includes(normQuery)))
+
+  const supplierPurchases = analytics?.purchases?.purchasesBySupplier || analytics?.purchases?.supplierBreakdown || []
+  const filteredSupplierPurchases = supplierPurchases.filter((r) => String(r.supplier || '').toLowerCase().includes(normQuery))
+
+  const datePurchases = analytics?.purchases?.purchasesByDate || analytics?.purchases?.dateBreakdown || []
+  const filteredDatePurchases = datePurchases.filter((r) => String(r.date || '').toLowerCase().includes(normQuery))
+
+  const purchaseHistory = purchasesList.length > 0 ? purchasesList : (analytics?.purchases?.recentPurchases || [])
+  const filteredPurchaseHistory = purchaseHistory.filter((r) => [r.reference, r.supplier].some((v) => String(v || '').toLowerCase().includes(normQuery)))
+
+  const handleActiveExport = () => {
+    const stamp = new Date().toISOString().slice(0, 10)
+    if (activeTab === 'archive') {
+      const headers = ['Report Name', 'Category', 'Period', 'Generated By', 'Created Date', 'Total Amount', 'Items Count', 'Status']
+      const rows = filteredReports.map((r) => [r.name, r.category, r.period, r.author, r.date, Number(r.totalAmount || 0).toFixed(2), r.itemCount || 0, r.status])
+      exportToCSV(`medicore-reports-archive-${stamp}.csv`, headers, rows)
+    } else if (activeTab === 'sales') {
+      if (salesSubTab === 'daily') {
+        const headers = ['Date', 'Completed Orders', 'Total Sales Revenue (Rs)', 'Average Per Order (Rs)']
+        const rows = filteredDailySales.map((r) => [r.date, r.count ?? r.orders ?? 0, Number(r.total ?? r.revenue ?? 0).toFixed(2), (Number(r.total ?? r.revenue ?? 0) / (Number(r.count ?? r.orders) || 1)).toFixed(2)])
+        exportToCSV(`medicore-daily-sales-${stamp}.csv`, headers, rows)
+      } else if (salesSubTab === 'monthly') {
+        const headers = ['Month', 'Completed Orders', 'Total Sales Revenue (Rs)', 'Average Per Order (Rs)']
+        const rows = filteredMonthlySales.map((r) => [r.month, r.count ?? r.orders ?? 0, Number(r.total ?? r.revenue ?? 0).toFixed(2), (Number(r.total ?? r.revenue ?? 0) / (Number(r.count ?? r.orders) || 1)).toFixed(2)])
+        exportToCSV(`medicore-monthly-sales-${stamp}.csv`, headers, rows)
+      } else {
+        const headers = ['Invoice #', 'Date & Time', 'Customer', 'Payment Method', 'Items Count', 'Total Amount (Rs)', 'Status']
+        const rows = filteredDetailedSales.map((r) => [r.invoice, r.date, r.customer, r.payment, r.items, Number(String(r.amount ?? r.total ?? 0).replace(/[^0-9.-]/g, '')).toFixed(2), r.status])
+        exportToCSV(`medicore-sales-range-${stamp}.csv`, headers, rows)
+      }
+    } else if (activeTab === 'inventory') {
+      if (inventorySubTab === 'current') {
+        const headers = ['Medicine', 'Batch #', 'Stock Quantity', 'Purchase Cost (Rs)', 'Selling Price (Rs)', 'Total Stock Valuation (Rs)']
+        const rows = filteredStockValuation.map((r) => [r.medicineName || r.medicine, r.batchNumber || r.batch, r.quantity, Number(r.purchasePrice ?? r.costPrice ?? 0).toFixed(2), Number(r.sellingPrice || 0).toFixed(2), Number(r.stockValue ?? r.totalValue ?? 0).toFixed(2)])
+        exportToCSV(`medicore-stock-valuation-${stamp}.csv`, headers, rows)
+      } else if (inventorySubTab === 'low-stock') {
+        const headers = ['Medicine', 'Category', 'Available Stock', 'Minimum Threshold', 'Status']
+        const rows = filteredLowStock.map((r) => [r.medicineName || r.medicine, r.category, r.quantity ?? r.stock ?? 0, r.minimumStock ?? r.threshold ?? 0, r.status || 'Low Stock'])
+        exportToCSV(`medicore-low-stock-audit-${stamp}.csv`, headers, rows)
+      } else if (inventorySubTab === 'expired') {
+        const headers = ['Medicine', 'Batch #', 'Expired Quantity', 'Expiry Date', 'Unit Cost (Rs)', 'Valuation Loss (Rs)']
+        const rows = filteredExpired.map((r) => [r.medicineName || r.medicine, r.batchNumber || r.batch, r.quantity, r.expiryDate || r.expiry, Number(r.purchasePrice ?? r.price ?? 0).toFixed(2), Number(r.stockValue ?? (Number(r.quantity || 0) * Number(r.purchasePrice ?? r.price ?? 0))).toFixed(2)])
+        exportToCSV(`medicore-expired-medicines-${stamp}.csv`, headers, rows)
+      } else {
+        const headers = ['Medicine', 'Batch #', 'Quantity', 'Expiry Date', 'Unit Price (Rs)', 'Status']
+        const rows = filteredNearExpiry.map((r) => [r.medicineName || r.medicine, r.batchNumber || r.batch, r.quantity, r.expiryDate || r.expiry, Number(r.sellingPrice ?? r.price ?? 0).toFixed(2), r.status || 'Expiring Soon'])
+        exportToCSV(`medicore-near-expiry-${stamp}.csv`, headers, rows)
+      }
+    } else if (activeTab === 'purchases') {
+      if (purchasesSubTab === 'supplier') {
+        const headers = ['Supplier Name', 'Purchase Orders Fulfilled', 'Total Purchase Amount (Rs)', 'Average Per Order (Rs)']
+        const rows = filteredSupplierPurchases.map((r) => [r.supplier, r.count ?? r.orders ?? 0, Number(r.total ?? r.totalAmount ?? 0).toFixed(2), (Number(r.total ?? r.totalAmount ?? 0) / (Number(r.count ?? r.orders) || 1)).toFixed(2)])
+        exportToCSV(`medicore-purchases-by-supplier-${stamp}.csv`, headers, rows)
+      } else if (purchasesSubTab === 'date') {
+        const headers = ['Date', 'Purchase Orders Fulfilled', 'Total Purchase Amount (Rs)']
+        const rows = filteredDatePurchases.map((r) => [r.date, r.count ?? r.orders ?? 0, Number(r.total ?? r.totalAmount ?? 0).toFixed(2)])
+        exportToCSV(`medicore-purchases-by-date-${stamp}.csv`, headers, rows)
+      } else {
+        const headers = ['Purchase Reference', 'Supplier', 'Date', 'Items Count', 'Total Amount (Rs)', 'Status']
+        const rows = filteredPurchaseHistory.map((r) => [r.reference, r.supplier, r.date, r.items, Number(String(r.amount ?? r.total ?? 0).replace(/[^0-9.-]/g, '')).toFixed(2), r.status])
+        exportToCSV(`medicore-purchase-history-${stamp}.csv`, headers, rows)
+      }
+    }
+  }
+
+  const exportSingleReportCSV = (report) => {
+    if (!report) return
+    const filename = `${report.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${new Date().toISOString().slice(0, 10)}.csv`
+    const details = report.details || []
+    if (details.length === 0) {
+      exportToCSV(filename, ['Summary'], [[report.summary || 'No records']])
+      return
+    }
+    const headers = Object.keys(details[0])
+    const rows = details.map((item) => headers.map((key) => item[key]))
+    exportToCSV(filename, headers, rows)
+  }
 
   return (
     <div className="report-content">
+      <section className="report-summary-grid" aria-label="Reporting KPI metrics">
+        <article className="report-summary-card sales">
+          <div>
+            <span>Total Sales Revenue</span>
+            <strong>Rs. {Number(analytics?.sales?.totalAmount ?? analytics?.sales?.totalRevenue ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+            <small>{analytics?.sales?.totalTransactions ?? analytics?.sales?.salesCount ?? 0} orders completed</small>
+          </div>
+          <div className="alert-summary-icon"><Icon name="cart" size={24} /></div>
+        </article>
+
+        <article className="report-summary-card today">
+          <div>
+            <span>Today's Sales</span>
+            <strong>Rs. {Number(analytics?.sales?.todayAmount ?? analytics?.sales?.todayRevenue ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+            <small>Daily pharmacy sales volume</small>
+          </div>
+          <div className="alert-summary-icon"><Icon name="pulse" size={24} /></div>
+        </article>
+
+        <article className="report-summary-card inventory">
+          <div>
+            <span>Stock Valuation</span>
+            <strong>Rs. {Number(analytics?.inventory?.totalStockValue ?? analytics?.inventory?.totalStockValuation ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+            <small>{analytics?.inventory?.totalStockUnits ?? analytics?.inventory?.totalUnits ?? 0} units across {analytics?.inventory?.totalBatches ?? 0} batches</small>
+          </div>
+          <div className="alert-summary-icon"><Icon name="cube" size={24} /></div>
+        </article>
+
+        <article className="report-summary-card purchases">
+          <div>
+            <span>Purchase Expenses</span>
+            <strong>Rs. {Number(analytics?.purchases?.totalAmount ?? analytics?.purchases?.totalPurchases ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+            <small>{analytics?.purchases?.totalOrders ?? analytics?.purchases?.ordersCount ?? 0} purchase orders fulfilled</small>
+          </div>
+          <div className="alert-summary-icon"><Icon name="truck" size={24} /></div>
+        </article>
+      </section>
+
       <section className="report-panel">
         <div className="report-heading">
           <div>
             <h2>Analytics &amp; reports</h2>
-            <p>Generate and review sales summaries, inventory audits, and financial statements.</p>
+            <p>Generate, export, and review sales summaries, inventory audits, and supplier purchases.</p>
           </div>
-          <button className="primary-button"><Icon name="report" size={19} /> Generate report</button>
+          <div className="report-actions-group">
+            <button className="primary-button" type="button" disabled={!canEdit} onClick={handleOpenGenerateModal}>
+              <Icon name="report" size={19} /> Generate report
+            </button>
+          </div>
         </div>
+
+        <div className="report-nav-tabs">
+          <button type="button" className={`report-tab-btn ${activeTab === 'sales' ? 'active' : ''}`} onClick={() => setActiveTab('sales')}>
+            <Icon name="cart" size={16} /> Sales Reports
+          </button>
+          <button type="button" className={`report-tab-btn ${activeTab === 'inventory' ? 'active' : ''}`} onClick={() => setActiveTab('inventory')}>
+            <Icon name="cube" size={16} /> Inventory Reports
+          </button>
+          <button type="button" className={`report-tab-btn ${activeTab === 'purchases' ? 'active' : ''}`} onClick={() => setActiveTab('purchases')}>
+            <Icon name="truck" size={16} /> Purchase Reports
+          </button>
+          <button type="button" className={`report-tab-btn ${activeTab === 'archive' ? 'active' : ''}`} onClick={() => setActiveTab('archive')}>
+            <Icon name="history" size={16} /> Saved Reports Archive
+            <span className="report-tab-badge">{reports.length}</span>
+          </button>
+        </div>
+
+        {activeTab === 'sales' && (
+          <div className="report-sub-toolbar">
+            <div className="report-pills-row">
+              <button type="button" className={`report-pill-btn ${salesSubTab === 'daily' ? 'active' : ''}`} onClick={() => setSalesSubTab('daily')}>Daily Sales</button>
+              <button type="button" className={`report-pill-btn ${salesSubTab === 'monthly' ? 'active' : ''}`} onClick={() => setSalesSubTab('monthly')}>Monthly Sales</button>
+              <button type="button" className={`report-pill-btn ${salesSubTab === 'range' ? 'active' : ''}`} onClick={() => setSalesSubTab('range')}>Sales by Date Range</button>
+            </div>
+            {salesSubTab === 'range' && (
+              <div className="report-pills-row">
+                <input type="date" className="report-filter-date" value={dateFilter.start} onChange={(e) => setDateFilter({ ...dateFilter, start: e.target.value })} title="Start Date" />
+                <span>to</span>
+                <input type="date" className="report-filter-date" value={dateFilter.end} onChange={(e) => setDateFilter({ ...dateFilter, end: e.target.value })} title="End Date" />
+                {(dateFilter.start || dateFilter.end) && (
+                  <button type="button" className="secondary-button" style={{ padding: '6px 10px', fontSize: '12px' }} onClick={() => setDateFilter({ start: '', end: '' })}>Clear</button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'inventory' && (
+          <div className="report-sub-toolbar">
+            <div className="report-pills-row">
+              <button type="button" className={`report-pill-btn ${inventorySubTab === 'current' ? 'active' : ''}`} onClick={() => setInventorySubTab('current')}>Current Stock Valuation</button>
+              <button type="button" className={`report-pill-btn ${inventorySubTab === 'low-stock' ? 'active' : ''}`} onClick={() => setInventorySubTab('low-stock')}>Low-Stock Audit</button>
+              <button type="button" className={`report-pill-btn ${inventorySubTab === 'expired' ? 'active' : ''}`} onClick={() => setInventorySubTab('expired')}>Expired Medicines</button>
+              <button type="button" className={`report-pill-btn ${inventorySubTab === 'near-expiry' ? 'active' : ''}`} onClick={() => setInventorySubTab('near-expiry')}>Near-Expiry Medicines</button>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'purchases' && (
+          <div className="report-sub-toolbar">
+            <div className="report-pills-row">
+              <button type="button" className={`report-pill-btn ${purchasesSubTab === 'supplier' ? 'active' : ''}`} onClick={() => setPurchasesSubTab('supplier')}>Purchases by Supplier</button>
+              <button type="button" className={`report-pill-btn ${purchasesSubTab === 'date' ? 'active' : ''}`} onClick={() => setPurchasesSubTab('date')}>Purchases by Date</button>
+              <button type="button" className={`report-pill-btn ${purchasesSubTab === 'history' ? 'active' : ''}`} onClick={() => setPurchasesSubTab('history')}>Purchase History</button>
+            </div>
+          </div>
+        )}
+
         <div className="report-toolbar">
-          <label className="catalog-search"><Icon name="search" size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search report records..." aria-label="Search report records" /></label>
-          <button className="catalog-button"><Icon name="filter" size={19} /> Filters</button>
-          <button className="catalog-button"><Icon name="download" size={18} /> Export</button>
+          <label className="catalog-search">
+            <Icon name="search" size={20} />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search records in active report view..." aria-label="Search report records" />
+          </label>
+          <button className="catalog-button" type="button" onClick={() => window.print()}>
+            <Icon name="print" size={18} /> Print
+          </button>
+          <button className="catalog-button" type="button" onClick={handleActiveExport}>
+            <Icon name="download" size={18} /> Export CSV
+          </button>
         </div>
+
         <div className="report-table-wrap">
-          <table className="medicine-table report-table">
-            <thead><tr><th>Report Name</th><th>Category</th><th>Period</th><th>Generated On</th><th>Generated By</th><th>Format</th><th>Status</th></tr></thead>
-            <tbody>{filteredReports.map((report) => <tr key={report.id || report.name}>
-              <td><strong>{report.name}</strong></td><td>{report.category}</td><td>{report.period}</td><td>{report.date}</td><td>{report.author}</td><td>{report.format}</td><td>{report.status}</td>
-            </tr>)}</tbody>
-          </table>
-          {filteredReports.length === 0 && <div className="report-empty-space" aria-label="No report records" />}
+          {activeTab === 'archive' && (
+            <table className="medicine-table report-table">
+              <thead>
+                <tr>
+                  <th>Report Name</th>
+                  <th>Category</th>
+                  <th>Period</th>
+                  <th>Generated By</th>
+                  <th>Items</th>
+                  <th>Total Amount</th>
+                  <th>Created Date</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredReports.map((report) => (
+                  <tr key={report._id || report.id || report.name}>
+                    <td><strong>{report.name}</strong></td>
+                    <td>{report.category}</td>
+                    <td>{report.period}</td>
+                    <td>{report.author}</td>
+                    <td>{report.itemCount || (report.details?.length || 0)}</td>
+                    <td>Rs. {Number(report.totalAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td>{report.date || (report.createdAt ? new Date(report.createdAt).toLocaleDateString() : '-')}</td>
+                    <td>
+                      <div className="table-actions">
+                        <button type="button" onClick={() => setSelectedReport(report)} title="View complete report details">View</button>
+                        <button type="button" onClick={() => exportSingleReportCSV(report)} title="Export this report to CSV">CSV</button>
+                        <button type="button" onClick={() => { setSelectedReport(report); setTimeout(() => window.print(), 100); }} title="Print report">Print</button>
+                        {canEdit && <button type="button" onClick={() => handleDeleteReport(report._id || report.id)} style={{ color: '#b42318' }} title="Delete record">Delete</button>}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {activeTab === 'sales' && salesSubTab === 'daily' && (
+            <table className="medicine-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Completed Orders</th>
+                  <th>Total Sales Revenue</th>
+                  <th>Average Revenue Per Order</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredDailySales.map((r, i) => (
+                  <tr key={r.date || i}>
+                    <td><strong>{r.date}</strong></td>
+                    <td>{r.count ?? r.orders ?? 0} orders</td>
+                    <td>Rs. {Number(r.total ?? r.revenue ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td>Rs. {(Number(r.total ?? r.revenue ?? 0) / (Number(r.count ?? r.orders) || 1)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {activeTab === 'sales' && salesSubTab === 'monthly' && (
+            <table className="medicine-table">
+              <thead>
+                <tr>
+                  <th>Month</th>
+                  <th>Completed Orders</th>
+                  <th>Total Sales Revenue</th>
+                  <th>Average Revenue Per Order</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredMonthlySales.map((r, i) => (
+                  <tr key={r.month || i}>
+                    <td><strong>{r.month}</strong></td>
+                    <td>{r.count ?? r.orders ?? 0} orders</td>
+                    <td>Rs. {Number(r.total ?? r.revenue ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td>Rs. {(Number(r.total ?? r.revenue ?? 0) / (Number(r.count ?? r.orders) || 1)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {activeTab === 'sales' && salesSubTab === 'range' && (
+            <table className="medicine-table">
+              <thead>
+                <tr>
+                  <th>Invoice #</th>
+                  <th>Date &amp; Time</th>
+                  <th>Customer</th>
+                  <th>Payment Method</th>
+                  <th>Items Count</th>
+                  <th>Total Amount</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredDetailedSales.map((r, i) => (
+                  <tr key={r.invoice || i}>
+                    <td><strong>{r.invoice}</strong></td>
+                    <td>{r.date}</td>
+                    <td>{r.customer}</td>
+                    <td>{r.payment}</td>
+                    <td>{r.items}</td>
+                    <td>Rs. {Number(r.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td><span className="report-status-badge">{r.status}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {activeTab === 'inventory' && inventorySubTab === 'current' && (
+            <table className="medicine-table">
+              <thead>
+                <tr>
+                  <th>Medicine</th>
+                  <th>Batch #</th>
+                  <th>Available Stock</th>
+                  <th>Purchase Cost</th>
+                  <th>Selling Price</th>
+                  <th>Total Stock Valuation</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredStockValuation.map((r, i) => (
+                  <tr key={`${r.medicineName || r.medicine}-${r.batchNumber || r.batch}-${i}`}>
+                    <td><strong>{r.medicineName || r.medicine}</strong></td>
+                    <td>{r.batchNumber || r.batch}</td>
+                    <td>{r.quantity} units</td>
+                    <td>Rs. {Number(r.purchasePrice ?? r.costPrice ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td>Rs. {Number(r.sellingPrice ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td>Rs. {Number(r.stockValue ?? r.totalValue ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {activeTab === 'inventory' && inventorySubTab === 'low-stock' && (
+            <table className="medicine-table">
+              <thead>
+                <tr>
+                  <th>Medicine</th>
+                  <th>Category</th>
+                  <th>Available Stock</th>
+                  <th>Minimum Threshold</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredLowStock.map((r, i) => (
+                  <tr key={`${r.medicineName || r.medicine}-${i}`}>
+                    <td><strong>{r.medicineName || r.medicine}</strong></td>
+                    <td>{r.category}</td>
+                    <td><strong style={{ color: '#b42318' }}>{r.quantity ?? r.stock ?? 0} units</strong></td>
+                    <td>{r.minimumStock ?? r.threshold ?? 0} units</td>
+                    <td><span className="report-status-badge danger">Low Stock</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {activeTab === 'inventory' && inventorySubTab === 'expired' && (
+            <table className="medicine-table">
+              <thead>
+                <tr>
+                  <th>Medicine</th>
+                  <th>Batch #</th>
+                  <th>Expired Quantity</th>
+                  <th>Expiry Date</th>
+                  <th>Unit Cost</th>
+                  <th>Valuation Loss</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredExpired.map((r, i) => (
+                  <tr key={`${r.medicineName || r.medicine}-${r.batchNumber || r.batch}-${i}`}>
+                    <td><strong>{r.medicineName || r.medicine}</strong></td>
+                    <td>{r.batchNumber || r.batch}</td>
+                    <td><strong style={{ color: '#b42318' }}>{r.quantity} units</strong></td>
+                    <td>{r.expiryDate || r.expiry}</td>
+                    <td>Rs. {Number(r.purchasePrice ?? r.price ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td>Rs. {Number(r.stockValue ?? (Number(r.quantity || 0) * Number(r.purchasePrice ?? r.price ?? 0))).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {activeTab === 'inventory' && inventorySubTab === 'near-expiry' && (
+            <table className="medicine-table">
+              <thead>
+                <tr>
+                  <th>Medicine</th>
+                  <th>Batch #</th>
+                  <th>Available Quantity</th>
+                  <th>Expiry Date</th>
+                  <th>Unit Price</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredNearExpiry.map((r, i) => (
+                  <tr key={`${r.medicineName || r.medicine}-${r.batchNumber || r.batch}-${i}`}>
+                    <td><strong>{r.medicineName || r.medicine}</strong></td>
+                    <td>{r.batchNumber || r.batch}</td>
+                    <td>{r.quantity} units</td>
+                    <td>{r.expiryDate || r.expiry}</td>
+                    <td>Rs. {Number(r.sellingPrice ?? r.price ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td><span className="report-status-badge warning">Expiring Within 30 Days</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {activeTab === 'purchases' && purchasesSubTab === 'supplier' && (
+            <table className="medicine-table">
+              <thead>
+                <tr>
+                  <th>Supplier Name</th>
+                  <th>Purchase Orders Fulfilled</th>
+                  <th>Total Purchase Amount</th>
+                  <th>Average Amount Per Order</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredSupplierPurchases.map((r, i) => (
+                  <tr key={r.supplier || i}>
+                    <td><strong>{r.supplier}</strong></td>
+                    <td>{r.count ?? r.orders ?? 0} orders</td>
+                    <td>Rs. {Number(r.total ?? r.totalAmount ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td>Rs. {(Number(r.total ?? r.totalAmount ?? 0) / (Number(r.count ?? r.orders) || 1)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {activeTab === 'purchases' && purchasesSubTab === 'date' && (
+            <table className="medicine-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Purchase Orders Fulfilled</th>
+                  <th>Total Purchase Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredDatePurchases.map((r, i) => (
+                  <tr key={r.date || i}>
+                    <td><strong>{r.date}</strong></td>
+                    <td>{r.count ?? r.orders ?? 0} orders</td>
+                    <td>Rs. {Number(r.total ?? r.totalAmount ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {activeTab === 'purchases' && purchasesSubTab === 'history' && (
+            <table className="medicine-table">
+              <thead>
+                <tr>
+                  <th>Reference / PO #</th>
+                  <th>Supplier</th>
+                  <th>Date</th>
+                  <th>Items Count</th>
+                  <th>Total Purchase Amount</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredPurchaseHistory.map((r, i) => (
+                  <tr key={r.reference || i}>
+                    <td><strong>{r.reference}</strong></td>
+                    <td>{r.supplier}</td>
+                    <td>{r.date}</td>
+                    <td>{r.items}</td>
+                    <td>Rs. {Number(String(r.amount ?? r.total ?? 0).replace(/[^0-9.-]/g, '')).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td><span className="report-status-badge">{r.status}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {loading && <div className="report-empty-space" style={{ display: 'grid', placeItems: 'center', color: '#647895' }}>Loading analytics data...</div>}
+          {!loading && (
+            ((activeTab === 'archive' && filteredReports.length === 0) ||
+             (activeTab === 'sales' && salesSubTab === 'daily' && filteredDailySales.length === 0) ||
+             (activeTab === 'sales' && salesSubTab === 'monthly' && filteredMonthlySales.length === 0) ||
+             (activeTab === 'sales' && salesSubTab === 'range' && filteredDetailedSales.length === 0) ||
+             (activeTab === 'inventory' && inventorySubTab === 'current' && filteredStockValuation.length === 0) ||
+             (activeTab === 'inventory' && inventorySubTab === 'low-stock' && filteredLowStock.length === 0) ||
+             (activeTab === 'inventory' && inventorySubTab === 'expired' && filteredExpired.length === 0) ||
+             (activeTab === 'inventory' && inventorySubTab === 'near-expiry' && filteredNearExpiry.length === 0) ||
+             (activeTab === 'purchases' && purchasesSubTab === 'supplier' && filteredSupplierPurchases.length === 0) ||
+             (activeTab === 'purchases' && purchasesSubTab === 'date' && filteredDatePurchases.length === 0) ||
+             (activeTab === 'purchases' && purchasesSubTab === 'history' && filteredPurchaseHistory.length === 0)) && (
+              <div className="report-empty-space" aria-label="No report records found" style={{ display: 'grid', placeItems: 'center', color: '#8899ac' }}>No report records found matching current criteria.</div>
+            )
+          )}
         </div>
+
         <div className="medicine-footer">
-          <span>Showing {filteredReports.length} of {reports.length} records</span>
-          <div className="pagination"><button disabled>Previous</button><button className="current-page">1</button><button disabled>Next</button></div>
+          <span>Active View: {activeTab === 'archive' ? 'Saved Reports Log' : activeTab === 'sales' ? `Sales (${salesSubTab})` : activeTab === 'inventory' ? `Inventory (${inventorySubTab})` : `Purchases (${purchasesSubTab})`}</span>
+          <div className="pagination">
+            <button disabled>Previous</button>
+            <button className="current-page">1</button>
+            <button disabled>Next</button>
+          </div>
         </div>
       </section>
+
+      {isGenModalOpen && (
+        <div className="modal-backdrop" onClick={() => setIsGenModalOpen(false)}>
+          <form className="modal-card" onSubmit={handleGenerate} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3>Generate New Pharmacy Report</h3>
+                <p>Compile a verified operational snapshot into MongoDB.</p>
+              </div>
+              <button className="modal-close" type="button" onClick={() => setIsGenModalOpen(false)}>
+                <Icon name="close" size={18} />
+              </button>
+            </div>
+            <div className="modal-body medicine-form">
+              <label className="settings-field">
+                <span>Category</span>
+                <select value={genForm.category} onChange={(e) => handleCategoryChange(e.target.value)}>
+                  <option value="Sales">Sales</option>
+                  <option value="Inventory">Inventory</option>
+                  <option value="Purchases">Purchases</option>
+                </select>
+              </label>
+
+              <label className="settings-field">
+                <span>Report Type</span>
+                <select value={genForm.type} onChange={(e) => setGenForm({ ...genForm, type: e.target.value })}>
+                  {genForm.category === 'Sales' && (
+                    <>
+                      <option value="Daily Sales">Daily Sales</option>
+                      <option value="Monthly Sales">Monthly Sales</option>
+                      <option value="Sales by Date Range">Sales by Date Range</option>
+                    </>
+                  )}
+                  {genForm.category === 'Inventory' && (
+                    <>
+                      <option value="Current Stock Audit">Current Stock Audit</option>
+                      <option value="Low Stock Audit">Low Stock Audit</option>
+                      <option value="Expired Medicines Audit">Expired Medicines Audit</option>
+                      <option value="Near Expiry Audit">Near Expiry Audit</option>
+                    </>
+                  )}
+                  {genForm.category === 'Purchases' && (
+                    <>
+                      <option value="Purchases by Supplier">Purchases by Supplier</option>
+                      <option value="Purchases by Date Range">Purchases by Date Range</option>
+                      <option value="Purchase History">Purchase History</option>
+                    </>
+                  )}
+                </select>
+              </label>
+
+              {(genForm.type === 'Daily Sales' || genForm.type === 'Monthly Sales' || genForm.type === 'Sales by Date Range' || genForm.type === 'Purchases by Date Range') && (
+                <label className="settings-field">
+                  <span>Start Date / Target Date</span>
+                  <input type="date" value={genForm.startDate} onChange={(e) => setGenForm({ ...genForm, startDate: e.target.value })} />
+                </label>
+              )}
+
+              {(genForm.type === 'Sales by Date Range' || genForm.type === 'Purchases by Date Range') && (
+                <label className="settings-field">
+                  <span>End Date</span>
+                  <input type="date" value={genForm.endDate} onChange={(e) => setGenForm({ ...genForm, endDate: e.target.value })} />
+                </label>
+              )}
+
+              {genForm.type === 'Purchases by Supplier' && (
+                <label className="settings-field">
+                  <span>Supplier</span>
+                  <select value={genForm.supplierId} onChange={(e) => setGenForm({ ...genForm, supplierId: e.target.value })}>
+                    <option value="">All Suppliers</option>
+                    {suppliers.map((s) => (
+                      <option key={s._id || s.name} value={s.name}>{s.name}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
+              {genError && <div className="login-error-message">{genError}</div>}
+            </div>
+            <div className="modal-footer">
+              <button className="secondary-button" type="button" onClick={() => setIsGenModalOpen(false)}>Cancel</button>
+              <button className="primary-button" type="submit" disabled={isGenerating}>
+                {isGenerating ? 'Compiling Report...' : 'Generate & Save'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {selectedReport && (
+        <div className="modal-backdrop" onClick={() => setSelectedReport(null)}>
+          <section className="modal-card report-detail-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3>{selectedReport.name}</h3>
+                <p>Category: <strong>{selectedReport.category}</strong> | Period: <strong>{selectedReport.period}</strong></p>
+              </div>
+              <button className="modal-close" type="button" onClick={() => setSelectedReport(null)}>
+                <Icon name="close" size={18} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ gap: '10px' }}>
+              <div className="report-detail-summary-banner">
+                <strong>Executive Summary</strong>
+                <p>{selectedReport.summary || 'Compiled pharmacy audit records snapshot.'}</p>
+              </div>
+
+              <div className="report-detail-meta">
+                <span>Generated by: <strong>{selectedReport.author}</strong></span>
+                <span>Date: <strong>{selectedReport.date || (selectedReport.createdAt ? new Date(selectedReport.createdAt).toLocaleDateString() : '-')}</strong></span>
+                <span>Total Items: <strong>{selectedReport.itemCount || (selectedReport.details?.length || 0)}</strong></span>
+                <span>Total Amount: <strong>Rs. {Number(selectedReport.totalAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
+              </div>
+
+              <div className="report-detail-table-wrap">
+                <table className="medicine-table">
+                  <thead>
+                    <tr>
+                      {selectedReport.details && selectedReport.details.length > 0 && selectedReport.details[0].medicineName ? (
+                        <>
+                          <th>Medicine</th>
+                          <th>Batch #</th>
+                          <th>Quantity</th>
+                          <th>Cost Price</th>
+                          <th>Selling Price</th>
+                          <th>Stock Valuation</th>
+                          <th>Expiry Date</th>
+                        </>
+                      ) : selectedReport.details && selectedReport.details.length > 0 && selectedReport.details[0].reference ? (
+                        <>
+                          <th>Reference</th>
+                          <th>Date</th>
+                          <th>Customer / Supplier</th>
+                          <th>Items</th>
+                          <th>Amount</th>
+                          <th>Status</th>
+                        </>
+                      ) : (
+                        Object.keys(selectedReport.details?.[0] || { Note: 'No data' }).map((k) => (
+                          <th key={k}>{k.toUpperCase()}</th>
+                        ))
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(selectedReport.details || []).map((row, idx) => (
+                      <tr key={idx}>
+                        {row.medicineName ? (
+                          <>
+                            <td><strong>{row.medicineName}</strong></td>
+                            <td>{row.batchNumber || '-'}</td>
+                            <td>{row.quantity}</td>
+                            <td>Rs. {Number(row.purchasePrice || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td>Rs. {Number(row.sellingPrice || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td>Rs. {Number(row.stockValue || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td>{row.expiryDate || '-'}</td>
+                          </>
+                        ) : row.reference ? (
+                          <>
+                            <td><strong>{row.reference}</strong></td>
+                            <td>{row.date}</td>
+                            <td>{row.customer || row.supplier || '-'}</td>
+                            <td>{row.items}</td>
+                            <td>Rs. {Number(row.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td><span className="report-status-badge">{row.status || 'Completed'}</span></td>
+                          </>
+                        ) : (
+                          Object.values(row).map((v, cIdx) => (
+                            <td key={cIdx}>{String(v ?? '')}</td>
+                          ))
+                        )}
+                      </tr>
+                    ))}
+                    {(!selectedReport.details || selectedReport.details.length === 0) && (
+                      <tr><td colSpan="6" style={{ textAlign: 'center', padding: '24px' }}>No detail rows recorded.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="modal-footer" style={{ gap: '10px' }}>
+              <button className="catalog-button print-include" type="button" onClick={() => window.print()}>
+                <Icon name="print" size={18} /> Print Report
+              </button>
+              <button className="catalog-button print-include" type="button" onClick={() => exportSingleReportCSV(selectedReport)}>
+                <Icon name="download" size={18} /> Export CSV
+              </button>
+              <button className="secondary-button" type="button" onClick={() => setSelectedReport(null)}>
+                Close
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   )
 }
@@ -1629,7 +2500,7 @@ function App() {
           </div>
         )}
 
-        {activePage === 'Medicines' ? <MedicineCatalog canEdit={canEdit} /> : activePage === 'Inventory' ? <InventoryStock canEdit={canEdit} /> : activePage === 'Suppliers' ? <SupplierDirectory canEdit={canEdit} /> : activePage === 'Purchases' ? <PurchaseOrders canEdit={canEdit} /> : activePage === 'Sales & Billing' ? <SalesBilling canEdit={canEdit} /> : activePage === 'Customers' ? <CustomerDirectory /> : activePage === 'Stock History' ? <StockHistory /> : activePage === 'Alerts' ? <Alerts notificationsEnabled={notificationsEnabled} onToggleNotifications={() => setNotificationsEnabled((prev) => !prev)} showSidebarCount={showSidebarCount} onToggleSidebarCount={() => setShowSidebarCount((prev) => !prev)} /> : activePage === 'Reports' ? <ReportsDirectory /> : activePage === 'User Management' ? (isAdministrator ? <UserManagement /> : <div className="content"><div className="welcome-row"><p>Access restricted. Administrator access required.</p></div></div>) : <DashboardOverview onNavigate={setActivePage} />}
+        {activePage === 'Medicines' ? <MedicineCatalog canEdit={canEdit} /> : activePage === 'Inventory' ? <InventoryStock canEdit={canEdit} /> : activePage === 'Suppliers' ? <SupplierDirectory canEdit={canEdit} /> : activePage === 'Purchases' ? <PurchaseOrders canEdit={canEdit} /> : activePage === 'Sales & Billing' ? <SalesBilling canEdit={canEdit} /> : activePage === 'Customers' ? <CustomerDirectory /> : activePage === 'Stock History' ? <StockHistory /> : activePage === 'Alerts' ? <Alerts notificationsEnabled={notificationsEnabled} onToggleNotifications={() => setNotificationsEnabled((prev) => !prev)} showSidebarCount={showSidebarCount} onToggleSidebarCount={() => setShowSidebarCount((prev) => !prev)} /> : activePage === 'Reports' ? <ReportsDirectory canEdit={canEdit} /> : activePage === 'User Management' ? (isAdministrator ? <UserManagement /> : <div className="content"><div className="welcome-row"><p>Access restricted. Administrator access required.</p></div></div>) : <DashboardOverview onNavigate={setActivePage} />}
       </main>
     </div>
   )
