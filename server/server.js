@@ -147,6 +147,29 @@ async function refreshInventoryAndAlerts() {
   if (alerts.length) await models.Alert.insertMany(alerts)
 }
 
+function getPurchaseAmount(purchase) {
+  const numericTotal = Number(purchase.totalAmount)
+  if (Number.isFinite(numericTotal) && numericTotal > 0) return numericTotal
+  const numericAmount = Number(String(purchase.amount || '').replace(/[^0-9.-]/g, ''))
+  return Number.isFinite(numericAmount) ? numericAmount : 0
+}
+
+async function refreshSupplierBalances() {
+  const suppliers = await models.Supplier.find()
+  const purchases = await models.Purchase.find().lean()
+  for (const supplier of suppliers) {
+    const supplierPurchases = purchases.filter((purchase) =>
+      (purchase.supplierId && String(purchase.supplierId) === String(supplier._id)) ||
+      purchase.supplier === supplier.name
+    )
+    const balanceAmount = supplierPurchases.reduce((total, purchase) => total + getPurchaseAmount(purchase), 0)
+    supplier.purchases = supplierPurchases.length
+    supplier.balanceAmount = balanceAmount
+    supplier.balance = `Rs. ${balanceAmount.toFixed(2)}`
+    await supplier.save()
+  }
+}
+
 app.get('/api/status', async (req, res) => {
   try {
     const collections = Object.keys(models)
@@ -585,8 +608,66 @@ app.get('/api/inventory', async (req, res) => {
 
 app.get('/api/suppliers', async (req, res) => {
   try {
-    const data = await models.Supplier.find()
-    res.json(data)
+    await refreshSupplierBalances()
+    res.json(await models.Supplier.find().sort({ name: 1 }))
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.post('/api/suppliers', authenticateToken, requireWriteAccess, async (req, res) => {
+  try {
+    const { name, contact, phone, email, address } = req.body
+    if (!name?.trim()) return res.status(400).json({ error: 'Supplier name is required' })
+    const supplier = await models.Supplier.create({
+      name: name.trim(),
+      contact: contact?.trim() || '',
+      phone: phone?.trim() || '',
+      email: email?.trim().toLowerCase() || '',
+      address: address?.trim() || ''
+    })
+    res.status(201).json(supplier)
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.put('/api/suppliers/:id', authenticateToken, requireWriteAccess, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid supplier ID' })
+    const allowed = ['name', 'contact', 'phone', 'email', 'address']
+    const updates = Object.fromEntries(Object.entries(req.body).filter(([key]) => allowed.includes(key)))
+    const existingSupplier = await models.Supplier.findById(req.params.id)
+    if (!existingSupplier) return res.status(404).json({ error: 'Supplier not found' })
+    if (updates.name !== undefined) {
+      if (!String(updates.name).trim()) return res.status(400).json({ error: 'Supplier name is required' })
+      updates.name = String(updates.name).trim()
+    }
+    for (const field of ['contact', 'phone', 'address']) {
+      if (updates[field] !== undefined) updates[field] = String(updates[field]).trim()
+    }
+    if (updates.email !== undefined) updates.email = String(updates.email).trim().toLowerCase()
+    const supplier = await models.Supplier.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true })
+    if (!supplier) return res.status(404).json({ error: 'Supplier not found' })
+    if (updates.name !== undefined && updates.name !== existingSupplier.name) {
+      await models.Purchase.updateMany(
+        { $or: [{ supplierId: supplier._id }, { supplier: existingSupplier.name }] },
+        { $set: { supplier: supplier.name } }
+      )
+    }
+    res.json(supplier)
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.delete('/api/suppliers/:id', authenticateToken, requireWriteAccess, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid supplier ID' })
+    const supplier = await models.Supplier.findByIdAndDelete(req.params.id)
+    if (!supplier) return res.status(404).json({ error: 'Supplier not found' })
+    await models.MedicineBatch.updateMany({ supplier: supplier._id }, { $set: { supplier: null } })
+    res.json({ message: 'Supplier deleted successfully' })
   } catch (error) {
     res.status(500).json({ error: error.message })
   }
@@ -606,33 +687,56 @@ app.post('/api/purchases', authenticateToken, requireWriteAccess, async (req, re
     const { reference, supplier, date, status, lineItems = [] } = req.body
     if (!reference?.trim() || !supplier?.trim()) return res.status(400).json({ error: 'Reference and supplier are required' })
     if (!Array.isArray(lineItems) || lineItems.length === 0) return res.status(400).json({ error: 'Add at least one purchase item' })
+    if (!mongoose.isValidObjectId(supplier)) return res.status(400).json({ error: 'A valid supplier is required' })
+    if (await models.Purchase.exists({ reference: reference.trim() })) {
+      return res.status(409).json({ error: 'A purchase with this reference or invoice number already exists' })
+    }
+    const supplierRecord = await models.Supplier.findById(supplier)
+    if (!supplierRecord) return res.status(404).json({ error: 'Supplier not found' })
 
     let itemCount = 0
     let amount = 0
+    const storedLineItems = []
     for (const line of lineItems) {
       if (!mongoose.isValidObjectId(line.batchId)) return res.status(400).json({ error: 'A valid batch is required for every purchase item' })
       const quantity = Math.max(0, Number(line.quantity) || 0)
       if (quantity <= 0) return res.status(400).json({ error: 'Purchase quantities must be greater than zero' })
       const batch = await models.MedicineBatch.findById(line.batchId)
       if (!batch) return res.status(404).json({ error: 'Purchase batch not found' })
+      const purchasePrice = Math.max(0, Number(line.purchasePrice) || 0)
+      batch.supplier = supplierRecord._id
       const previous = batch.quantity
       batch.quantity = previous + quantity
-      if (line.purchasePrice !== undefined) batch.purchasePrice = Math.max(0, Number(line.purchasePrice) || 0)
+      batch.purchasePrice = purchasePrice
       await batch.save()
       const medicine = await models.Medicine.findById(batch.medicine)
       await recordStockMovement({ medicine, batch, type: 'Purchase received', quantity, previous, balance: batch.quantity, reference: reference.trim() })
       itemCount += quantity
-      amount += quantity * (line.purchasePrice !== undefined ? Math.max(0, Number(line.purchasePrice) || 0) : batch.purchasePrice)
+      amount += quantity * purchasePrice
+      storedLineItems.push({
+        batchId: batch._id,
+        batchNumber: batch.batchNumber,
+        medicine: medicine?.brandName || medicine?.name || 'Unknown medicine',
+        quantity,
+        purchasePrice
+      })
     }
     const purchase = await models.Purchase.create({
       reference: reference.trim(),
-      supplier: supplier.trim(),
+      supplier: supplierRecord.name,
+      supplierId: supplierRecord._id,
       date: date || new Date().toISOString().slice(0, 10),
       items: itemCount,
       amount: `Rs. ${amount.toFixed(2)}`,
+      totalAmount: amount,
       status: status || 'Completed',
-      lineItems
+      lineItems: storedLineItems
     })
+    supplierRecord.purchases += 1
+    supplierRecord.balanceAmount = (Number(supplierRecord.balanceAmount) || 0) + amount
+    supplierRecord.balance = `Rs. ${supplierRecord.balanceAmount.toFixed(2)}`
+    await supplierRecord.save()
+    await refreshSupplierBalances()
     await refreshInventoryAndAlerts()
     res.status(201).json(purchase)
   } catch (error) {

@@ -540,9 +540,52 @@ function InventoryStock({ canEdit }) {
   )
 }
 
-function SupplierDirectory() {
+function SupplierDirectory({ canEdit }) {
   const [query, setQuery] = useState('')
-  const suppliers = []
+  const [suppliers, setSuppliers] = useState([])
+  const [modal, setModal] = useState(null)
+  const [form, setForm] = useState({})
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const load = async () => {
+    setLoading(true)
+    try {
+      const response = await fetch(`${API_BASE}/api/suppliers`)
+      const data = await readApiResponse(response)
+      if (!response.ok) throw new Error(data.error || 'Unable to load suppliers')
+      setSuppliers(data)
+    } catch (err) { setError(err.message) } finally { setLoading(false) }
+  }
+  useEffect(() => { load() }, [])
+  const openSupplier = (supplier = {}, mode = supplier._id ? 'edit' : 'create') => {
+    setError('')
+    setForm({ name: '', contact: '', phone: '', email: '', address: '', ...supplier })
+    setModal(mode)
+  }
+  const save = async (event) => {
+    event.preventDefault()
+    setError('')
+    try {
+      const response = await authenticatedFetch(`${API_BASE}/api/suppliers${form._id ? `/${form._id}` : ''}`, {
+        method: form._id ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form)
+      })
+      const data = await readApiResponse(response)
+      if (!response.ok) throw new Error(data.error || 'Unable to save supplier')
+      setModal(null)
+      await load()
+    } catch (err) { setError(err.message) }
+  }
+  const remove = async (supplier) => {
+    if (!window.confirm(`Delete ${supplier.name}?`)) return
+    try {
+      const response = await authenticatedFetch(`${API_BASE}/api/suppliers/${supplier._id}`, { method: 'DELETE' })
+      const data = await readApiResponse(response)
+      if (!response.ok) throw new Error(data.error || 'Unable to delete supplier')
+      await load()
+    } catch (err) { setError(err.message) }
+  }
   const filteredSuppliers = suppliers.filter((supplier) =>
     Object.values(supplier).some((value) => String(value).toLowerCase().includes(query.toLowerCase())),
   )
@@ -555,7 +598,7 @@ function SupplierDirectory() {
             <h2>Supplier directory</h2>
             <p>Manage supplier contacts, balances, and purchase history.</p>
           </div>
-          <button className="primary-button"><Icon name="truck" size={19} /> Add supplier</button>
+          <button className="primary-button" type="button" disabled={!canEdit} onClick={() => openSupplier()}><Icon name="truck" size={19} /> Add supplier</button>
         </div>
         <div className="supplier-toolbar">
           <label className="catalog-search"><Icon name="search" size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search supplier directory..." aria-label="Search supplier directory" /></label>
@@ -563,11 +606,12 @@ function SupplierDirectory() {
         </div>
         <div className="supplier-table-wrap">
           <table className="medicine-table supplier-table">
-            <thead><tr><th>Supplier</th><th>Contact</th><th>Phone</th><th>Email</th><th>Purchases</th><th>Balance</th></tr></thead>
+            <thead><tr><th>Supplier</th><th>Contact</th><th>Phone</th><th>Email</th><th>Address</th><th>Purchases</th><th>Balance</th><th>Actions</th></tr></thead>
             <tbody>{filteredSuppliers.map((supplier) => <tr key={supplier.name}>
-              <td><strong>{supplier.name}</strong></td><td>{supplier.contact}</td><td>{supplier.phone}</td><td>{supplier.email}</td><td>{supplier.purchases}</td><td>{supplier.balance}</td>
+              <td><strong>{supplier.name}</strong></td><td>{supplier.contact || '-'}</td><td>{supplier.phone || '-'}</td><td>{supplier.email || '-'}</td><td>{supplier.address || '-'}</td><td>{supplier.purchases}</td><td>{supplier.balance}</td><td className="table-actions"><button type="button" onClick={() => openSupplier(supplier, 'view')}>View</button><button type="button" disabled={!canEdit} onClick={() => openSupplier(supplier)}>Edit</button><button type="button" disabled={!canEdit} onClick={() => remove(supplier)}>Delete</button></td>
             </tr>)}</tbody>
           </table>
+          {loading && <div className="supplier-empty-space">Loading suppliers...</div>}
           {filteredSuppliers.length === 0 && <div className="supplier-empty-space" aria-label="No supplier records" />}
         </div>
         <div className="medicine-footer">
@@ -575,27 +619,44 @@ function SupplierDirectory() {
           <div className="pagination"><button disabled>Previous</button><button className="current-page">1</button><button disabled>Next</button></div>
         </div>
       </section>
+      {modal && <div className="modal-backdrop" onClick={() => setModal(null)}>
+        <form className="modal-card" onSubmit={save} onClick={(event) => event.stopPropagation()}>
+          <div className="modal-header"><div><h3>{modal === 'view' ? 'Supplier details' : form._id ? 'Edit supplier' : 'Add supplier'}</h3><p>Store supplier contact and address details.</p></div><button className="modal-close" type="button" onClick={() => setModal(null)}><Icon name="close" size={18} /></button></div>
+          <div className="modal-body medicine-form">
+            {[['name', 'Supplier name'], ['contact', 'Contact person'], ['phone', 'Phone'], ['email', 'Email'], ['address', 'Address']].map(([field, label]) => <label className="settings-field" key={field}><span>{label}</span><input disabled={modal === 'view'} type={field === 'email' ? 'email' : 'text'} required={field === 'name'} value={form[field] || ''} onChange={(event) => setForm({ ...form, [field]: event.target.value })} /></label>)}
+            {error && <div className="login-error-message">{error}</div>}
+          </div>
+          <div className="modal-footer"><button className="secondary-button" type="button" onClick={() => setModal(null)}>{modal === 'view' ? 'Close' : 'Cancel'}</button>{modal !== 'view' && <button className="primary-button" type="submit">Save supplier</button>}</div>
+        </form>
+      </div>}
     </div>
   )
 }
 
 function PurchaseOrders({ canEdit }) {
   const [query, setQuery] = useState('')
+  const [supplierFilter, setSupplierFilter] = useState('')
+  const [dateFilter, setDateFilter] = useState('')
   const [purchases, setPurchases] = useState([])
   const [batches, setBatches] = useState([])
+  const [suppliers, setSuppliers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [modal, setModal] = useState(false)
-  const [form, setForm] = useState({ reference: '', supplier: '', date: '', batchId: '', quantity: 1, purchasePrice: 0 })
+  const [modal, setModal] = useState(null)
+  const [selectedPurchase, setSelectedPurchase] = useState(null)
+  const [form, setForm] = useState({ reference: '', supplier: '', date: '', lineItems: [{ batchId: '', quantity: 1, purchasePrice: 0 }] })
   const load = async () => {
     setLoading(true)
     try {
-      const [purchaseResponse, medicineResponse] = await Promise.all([fetch(`${API_BASE}/api/purchases`), fetch(`${API_BASE}/api/medicines`)])
+      const [purchaseResponse, medicineResponse, supplierResponse] = await Promise.all([fetch(`${API_BASE}/api/purchases`), fetch(`${API_BASE}/api/medicines`), fetch(`${API_BASE}/api/suppliers`)])
       const purchaseData = await readApiResponse(purchaseResponse)
       const medicineData = await readApiResponse(medicineResponse)
+      const supplierData = await readApiResponse(supplierResponse)
       if (!purchaseResponse.ok) throw new Error(purchaseData.error || 'Unable to load purchases')
       if (!medicineResponse.ok) throw new Error(medicineData.error || 'Unable to load medicines')
+      if (!supplierResponse.ok) throw new Error(supplierData.error || 'Unable to load suppliers')
       setPurchases(purchaseData)
+      setSuppliers(supplierData)
       setBatches(medicineData.flatMap((medicine) => (medicine.batches || []).map((batch) => ({ ...batch, medicineName: medicine.brandName || medicine.name }))))
     } catch (err) { setError(err.message) } finally { setLoading(false) }
   }
@@ -607,49 +668,93 @@ function PurchaseOrders({ canEdit }) {
       const response = await authenticatedFetch(`${API_BASE}/api/purchases`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, lineItems: [{ batchId: form.batchId, quantity: Number(form.quantity), purchasePrice: Number(form.purchasePrice) }] })
+        body: JSON.stringify({
+          reference: form.reference,
+          supplier: form.supplier,
+          date: form.date,
+          lineItems: form.lineItems.map((line) => ({ ...line, quantity: Number(line.quantity), purchasePrice: Number(line.purchasePrice) }))
+        })
       })
       const data = await readApiResponse(response)
       if (!response.ok) throw new Error(data.error || 'Unable to record purchase')
-      setModal(false)
+      setModal(null)
       await load()
     } catch (err) { setError(err.message) }
   }
-  const filteredPurchases = purchases.filter((purchase) =>
-    Object.values(purchase).some((value) => String(value).toLowerCase().includes(query.toLowerCase())),
-  )
+  const filteredPurchases = purchases.filter((purchase) => {
+    const matchesQuery = Object.values(purchase).some((value) => String(value).toLowerCase().includes(query.toLowerCase()))
+    const matchesSupplier = !supplierFilter || purchase.supplier === supplierFilter
+    const matchesDate = !dateFilter || purchase.date === dateFilter
+    return matchesQuery && matchesSupplier && matchesDate
+  })
+  const purchaseTotal = form.lineItems.reduce((total, line) =>
+    total + (Number(line.quantity) || 0) * (Number(line.purchasePrice) || 0), 0)
+  const updateLine = (index, field, value) => setForm((current) => ({
+    ...current,
+    lineItems: current.lineItems.map((line, lineIndex) => lineIndex === index ? { ...line, [field]: value } : line)
+  }))
 
   return (
     <div className="purchase-content">
       <section className="purchase-panel">
         <div className="purchase-heading">
           <div><h2>Purchase orders</h2><p>Record incoming stock and supplier invoices.</p></div>
-          <button className="primary-button" type="button" disabled={!canEdit} onClick={() => { setError(''); setForm({ reference: `PO-${Date.now().toString().slice(-6)}`, supplier: '', date: new Date().toISOString().slice(0, 10), batchId: batches[0]?._id || '', quantity: 1, purchasePrice: 0 }); setModal(true) }}><Icon name="box" size={19} /> New purchase</button>
+          <button className="primary-button" type="button" disabled={!canEdit} onClick={() => { setError(''); setForm({ reference: `PO-${Date.now().toString().slice(-6)}`, supplier: suppliers[0]?._id || '', date: new Date().toISOString().slice(0, 10), lineItems: [{ batchId: batches[0]?._id || '', quantity: 1, purchasePrice: 0 }] }); setModal('create') }}><Icon name="box" size={19} /> New purchase</button>
         </div>
-        <div className="purchase-toolbar"><label className="catalog-search"><Icon name="search" size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search purchase orders..." /></label></div>
+        <div className="purchase-toolbar">
+          <label className="catalog-search"><Icon name="search" size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search reference, supplier, or date..." /></label>
+          <select className="category-filter" value={supplierFilter} onChange={(event) => setSupplierFilter(event.target.value)} aria-label="Filter by supplier"><option value="">All suppliers</option>{suppliers.map((supplier) => <option key={supplier._id} value={supplier.name}>{supplier.name}</option>)}</select>
+          <input className="purchase-date-filter" type="date" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} aria-label="Filter by purchase date" />
+          {(supplierFilter || dateFilter) && <button type="button" className="catalog-button" onClick={() => { setSupplierFilter(''); setDateFilter('') }}>Clear filters</button>}
+        </div>
         <div className="purchase-table-wrap">
-          <table className="medicine-table purchase-table"><thead><tr><th>Reference</th><th>Supplier</th><th>Date</th><th>Items</th><th>Amount</th><th>Status</th></tr></thead>
-            <tbody>{filteredPurchases.map((purchase) => <tr key={purchase._id}><td><strong>{purchase.reference}</strong></td><td>{purchase.supplier}</td><td>{purchase.date}</td><td>{purchase.items}</td><td>{purchase.amount}</td><td>{purchase.status}</td></tr>)}</tbody>
+          <table className="medicine-table purchase-table"><thead><tr><th>Reference / Invoice</th><th>Supplier</th><th>Date</th><th>Items</th><th>Total amount</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody>{filteredPurchases.map((purchase) => <tr key={purchase._id}><td><strong>{purchase.reference}</strong></td><td>{purchase.supplier}</td><td>{purchase.date}</td><td>{purchase.items}</td><td>{purchase.amount}</td><td>{purchase.status}</td><td className="table-actions"><button type="button" onClick={() => { setSelectedPurchase(purchase); setModal('view') }}>View</button></td></tr>)}</tbody>
           </table>
           {loading && <div className="purchase-empty-space">Loading purchases...</div>}
           {!loading && filteredPurchases.length === 0 && <div className="purchase-empty-space" aria-label="No purchase order records" />}
         </div>
         <div className="medicine-footer"><span>Showing {filteredPurchases.length} of {purchases.length} records</span></div>
       </section>
-      {modal && <div className="modal-backdrop" onClick={() => setModal(false)}>
+      {modal === 'create' && <div className="modal-backdrop" onClick={() => setModal(null)}>
         <form className="modal-card" onSubmit={save} onClick={(event) => event.stopPropagation()}>
-          <div className="modal-header"><div><h3>New purchase</h3><p>Receiving stock will increase the selected batch automatically.</p></div><button className="modal-close" type="button" onClick={() => setModal(false)}><Icon name="close" size={18} /></button></div>
+          <div className="modal-header"><div><h3>New purchase</h3><p>Receiving stock will increase the selected batch automatically.</p></div><button className="modal-close" type="button" onClick={() => setModal(null)}><Icon name="close" size={18} /></button></div>
           <div className="modal-body medicine-form">
-            <label className="settings-field"><span>Reference</span><input required value={form.reference} onChange={(event) => setForm({ ...form, reference: event.target.value })} /></label>
-            <label className="settings-field"><span>Supplier</span><input required value={form.supplier} onChange={(event) => setForm({ ...form, supplier: event.target.value })} /></label>
+            <label className="settings-field"><span>Reference / Invoice number</span><input required value={form.reference} onChange={(event) => setForm({ ...form, reference: event.target.value })} /></label>
+            <label className="settings-field"><span>Supplier</span><select required value={form.supplier} onChange={(event) => setForm({ ...form, supplier: event.target.value })}><option value="">Select supplier</option>{suppliers.map((supplier) => <option key={supplier._id} value={supplier._id}>{supplier.name}</option>)}</select></label>
             <label className="settings-field"><span>Date</span><input type="date" required value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} /></label>
-            <label className="settings-field"><span>Medicine batch</span><select required value={form.batchId} onChange={(event) => setForm({ ...form, batchId: event.target.value })}><option value="">Select batch</option>{batches.map((batch) => <option key={batch._id} value={batch._id}>{batch.medicineName} - {batch.batchNumber}</option>)}</select></label>
-            <label className="settings-field"><span>Quantity received</span><input type="number" min="1" required value={form.quantity} onChange={(event) => setForm({ ...form, quantity: event.target.value })} /></label>
-            <label className="settings-field"><span>Unit purchase price</span><input type="number" min="0" required value={form.purchasePrice} onChange={(event) => setForm({ ...form, purchasePrice: event.target.value })} /></label>
+            <div className="purchase-line-items">
+              {form.lineItems.map((line, index) => <div className="purchase-line" key={index}>
+                <label className="settings-field"><span>Medicine batch</span><select required value={line.batchId} onChange={(event) => updateLine(index, 'batchId', event.target.value)}><option value="">Select batch</option>{batches.map((batch) => <option key={batch._id} value={batch._id}>{batch.medicineName} - {batch.batchNumber}</option>)}</select></label>
+                <label className="settings-field"><span>Quantity</span><input type="number" min="1" required value={line.quantity} onChange={(event) => updateLine(index, 'quantity', event.target.value)} /></label>
+                <label className="settings-field"><span>Unit price</span><input type="number" min="0" step="0.01" required value={line.purchasePrice} onChange={(event) => updateLine(index, 'purchasePrice', event.target.value)} /></label>
+                {form.lineItems.length > 1 && <button type="button" className="purchase-remove-line" onClick={() => setForm({ ...form, lineItems: form.lineItems.filter((_, lineIndex) => lineIndex !== index) })} aria-label="Remove purchase item"><Icon name="close" size={16} /></button>}
+              </div>)}
+              <button type="button" className="secondary-button purchase-add-line" onClick={() => setForm({ ...form, lineItems: [...form.lineItems, { batchId: '', quantity: 1, purchasePrice: 0 }] })}><Icon name="plus" size={17} /> Add medicine</button>
+              <div className="purchase-total">Total purchase amount <strong>Rs. {purchaseTotal.toFixed(2)}</strong></div>
+            </div>
             {error && <div className="login-error-message">{error}</div>}
           </div>
-          <div className="modal-footer"><button className="secondary-button" type="button" onClick={() => setModal(false)}>Cancel</button><button className="primary-button" type="submit">Receive stock</button></div>
+          <div className="modal-footer"><button className="secondary-button" type="button" onClick={() => setModal(null)}>Cancel</button><button className="primary-button" type="submit">Receive stock</button></div>
         </form>
+      </div>}
+      {modal === 'view' && selectedPurchase && <div className="modal-backdrop" onClick={() => setModal(null)}>
+        <section className="modal-card" onClick={(event) => event.stopPropagation()}>
+          <div className="modal-header"><div><h3>Purchase details</h3><p>{selectedPurchase.reference}</p></div><button className="modal-close" type="button" onClick={() => setModal(null)}><Icon name="close" size={18} /></button></div>
+          <div className="modal-body purchase-detail">
+            <div className="purchase-detail-summary">
+              <span><small>Supplier</small><strong>{selectedPurchase.supplier}</strong></span>
+              <span><small>Purchase date</small><strong>{selectedPurchase.date}</strong></span>
+              <span><small>Total amount</small><strong>{selectedPurchase.amount}</strong></span>
+              <span><small>Status</small><strong>{selectedPurchase.status}</strong></span>
+            </div>
+            <table className="medicine-table purchase-detail-table">
+              <thead><tr><th>Medicine</th><th>Batch</th><th>Quantity</th><th>Unit price</th><th>Line total</th></tr></thead>
+              <tbody>{(selectedPurchase.lineItems || []).map((line, index) => <tr key={`${line.batchId}-${index}`}><td>{line.medicine || '-'}</td><td>{line.batchNumber || line.batchId}</td><td>{line.quantity}</td><td>Rs. {Number(line.purchasePrice || 0).toFixed(2)}</td><td>Rs. {(Number(line.quantity || 0) * Number(line.purchasePrice || 0)).toFixed(2)}</td></tr>)}</tbody>
+            </table>
+          </div>
+          <div className="modal-footer"><button className="secondary-button" type="button" onClick={() => setModal(null)}>Close</button></div>
+        </section>
       </div>}
     </div>
   )
@@ -1524,7 +1629,7 @@ function App() {
           </div>
         )}
 
-        {activePage === 'Medicines' ? <MedicineCatalog canEdit={canEdit} /> : activePage === 'Inventory' ? <InventoryStock canEdit={canEdit} /> : activePage === 'Suppliers' ? <SupplierDirectory /> : activePage === 'Purchases' ? <PurchaseOrders canEdit={canEdit} /> : activePage === 'Sales & Billing' ? <SalesBilling canEdit={canEdit} /> : activePage === 'Customers' ? <CustomerDirectory /> : activePage === 'Stock History' ? <StockHistory /> : activePage === 'Alerts' ? <Alerts notificationsEnabled={notificationsEnabled} onToggleNotifications={() => setNotificationsEnabled((prev) => !prev)} showSidebarCount={showSidebarCount} onToggleSidebarCount={() => setShowSidebarCount((prev) => !prev)} /> : activePage === 'Reports' ? <ReportsDirectory /> : activePage === 'User Management' ? (isAdministrator ? <UserManagement /> : <div className="content"><div className="welcome-row"><p>Access restricted. Administrator access required.</p></div></div>) : <DashboardOverview onNavigate={setActivePage} />}
+        {activePage === 'Medicines' ? <MedicineCatalog canEdit={canEdit} /> : activePage === 'Inventory' ? <InventoryStock canEdit={canEdit} /> : activePage === 'Suppliers' ? <SupplierDirectory canEdit={canEdit} /> : activePage === 'Purchases' ? <PurchaseOrders canEdit={canEdit} /> : activePage === 'Sales & Billing' ? <SalesBilling canEdit={canEdit} /> : activePage === 'Customers' ? <CustomerDirectory /> : activePage === 'Stock History' ? <StockHistory /> : activePage === 'Alerts' ? <Alerts notificationsEnabled={notificationsEnabled} onToggleNotifications={() => setNotificationsEnabled((prev) => !prev)} showSidebarCount={showSidebarCount} onToggleSidebarCount={() => setShowSidebarCount((prev) => !prev)} /> : activePage === 'Reports' ? <ReportsDirectory /> : activePage === 'User Management' ? (isAdministrator ? <UserManagement /> : <div className="content"><div className="welcome-row"><p>Access restricted. Administrator access required.</p></div></div>) : <DashboardOverview onNavigate={setActivePage} />}
       </main>
     </div>
   )

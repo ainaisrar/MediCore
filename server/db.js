@@ -76,16 +76,20 @@ const supplierSchema = new mongoose.Schema({
   contact: { type: String, default: '' },
   phone: { type: String, default: '' },
   email: { type: String, default: '' },
+  address: { type: String, default: '' },
   purchases: { type: Number, default: 0 },
-  balance: { type: String, default: '$0.00' }
+  balanceAmount: { type: Number, default: 0, min: 0 },
+  balance: { type: String, default: 'Rs. 0.00' }
 }, { timestamps: true })
 
 const purchaseSchema = new mongoose.Schema({
-  reference: { type: String, required: true },
+  reference: { type: String, required: true, unique: true },
   supplier: { type: String, required: true },
+  supplierId: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier', default: null },
   date: { type: String, default: '' },
   items: { type: Number, default: 0 },
   amount: { type: String, default: '$0.00' },
+  totalAmount: { type: Number, default: 0, min: 0 },
   lineItems: { type: Array, default: [] },
   status: { type: String, default: 'Pending' }
 }, { timestamps: true })

@@ -29,7 +29,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .sign-out { flex: 0 0 64px; width: 100%; margin-top: auto; border: 0; border-top: 1px solid rgba(198, 216, 245, .13); border-radius: 0; padding-top: 20px; color: #c5d2e7; background: transparent; text-align: left; cursor: pointer; }
 .sign-out .icon { transform: rotate(180deg); }
 
-.dashboard-main { width: calc(100% - 321px); margin-left: 321px; }
+.dashboard-main { width: calc(100% - 321px); min-width: 0; margin-left: 321px; }
 .topbar { display: flex; align-items: center; justify-content: space-between; min-height: 90px; padding: 0 36px; border-bottom: 1px solid var(--line); background: var(--surface); }
 .page-title h1 { margin: 0 0 4px; font-size: 22px; letter-spacing: -.5px; }
 .page-title span { color: var(--muted); font-size: 13px; }
@@ -237,6 +237,8 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .supplier-heading h2 { margin: 0 0 9px; font-size: 19px; letter-spacing: -.3px; }
 .supplier-heading p { margin: 0; color: #788aa3; font-size: 15px; }
 .supplier-toolbar { display: flex; gap: 13px; padding: 18px; border-bottom: 1px solid var(--line); }
+.supplier-table-wrap { max-width: 100%; overflow-x: auto; overflow-y: visible; -webkit-overflow-scrolling: touch; }
+.supplier-table { min-width: 1200px; }
 .supplier-table th, .supplier-table td { padding-right: 23px; padding-left: 23px; }
 .supplier-table th:nth-child(1), .supplier-table td:nth-child(1) { width: 20%; }
 .supplier-table th:nth-child(2), .supplier-table td:nth-child(2) { width: 14%; }
@@ -252,6 +254,9 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .purchase-heading h2 { margin: 0 0 9px; font-size: 19px; letter-spacing: -.3px; }
 .purchase-heading p { margin: 0; color: #788aa3; font-size: 15px; }
 .purchase-toolbar { display: flex; gap: 13px; padding: 18px; border-bottom: 1px solid var(--line); }
+.purchase-date-filter { height: 45px; min-width: 150px; padding: 0 12px; border: 1px solid #dfe7f1; border-radius: 13px; color: #536884; background: #fff; }
+.purchase-table-wrap { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.purchase-table { min-width: 1050px; }
 .purchase-table th, .purchase-table td { padding-right: 23px; padding-left: 23px; }
 .purchase-table th:nth-child(1), .purchase-table td:nth-child(1) { width: 20%; }
 .purchase-table th:nth-child(2), .purchase-table td:nth-child(2) { width: 24%; }
@@ -260,6 +265,17 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .purchase-table th:nth-child(5), .purchase-table td:nth-child(5) { width: 16%; }
 .purchase-table th:nth-child(6), .purchase-table td:nth-child(6) { width: 12%; }
 .purchase-empty-space { height: 180px; }
+.purchase-line-items { grid-column: 1 / -1; display: grid; gap: 12px; }
+.purchase-line { display: grid; grid-template-columns: minmax(180px, 2fr) 100px 120px 36px; align-items: end; gap: 10px; }
+.purchase-remove-line { display: grid; place-items: center; width: 36px; height: 50px; border: 1px solid #f2c8c8; border-radius: 10px; color: #b42318; background: #fff5f4; cursor: pointer; }
+.purchase-add-line { width: fit-content; }
+.purchase-total { display: flex; justify-content: space-between; padding: 14px 16px; border-radius: 12px; color: #637795; background: #f4f7fb; }
+.purchase-total strong { color: var(--ink); font-size: 16px; }
+.purchase-detail { max-width: 760px; }
+.purchase-detail-summary { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.purchase-detail-summary span { display: grid; gap: 5px; padding: 12px; border: 1px solid #e6ecf4; border-radius: 10px; }
+.purchase-detail-summary small { color: #788aa3; }
+.purchase-detail-table { min-width: 700px; }
 
 .history-content { padding: 36px 35px 48px; }
 .history-panel { overflow: hidden; border: 1px solid #e3eaf3; border-radius: 18px; background: #fff; box-shadow: 0 2px 4px rgba(29, 61, 102, .035); }
@@ -502,6 +518,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .purchase-heading { align-items: flex-start; flex-direction: column; gap: 18px; }
   .purchase-toolbar { flex-wrap: wrap; }
   .purchase-toolbar .catalog-search { min-width: 100%; }
+  .purchase-date-filter { width: 100%; }
   .history-heading { align-items: flex-start; flex-direction: column; gap: 18px; }
   .history-toolbar { flex-wrap: wrap; }
   .history-toolbar .catalog-search { min-width: 100%; }
