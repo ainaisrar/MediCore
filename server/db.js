@@ -132,7 +132,11 @@ const reportSchema = new mongoose.Schema({
   date: { type: String, default: '' },
   author: { type: String, default: 'Administrator' },
   format: { type: String, default: 'PDF' },
-  status: { type: String, default: 'Ready' }
+  status: { type: String, default: 'Ready' },
+  summary: { type: String, default: '' },
+  totalAmount: { type: Number, default: 0 },
+  itemCount: { type: Number, default: 0 },
+  details: { type: Array, default: [] }
 }, { timestamps: true })
 
 const stockHistorySchema = new mongoose.Schema({

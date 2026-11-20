@@ -815,10 +815,342 @@ app.get('/api/alerts', async (req, res) => {
   }
 })
 
+app.get('/api/reports/analytics', async (req, res) => {
+  try {
+    const [sales, medicines, batches, purchases, suppliers] = await Promise.all([
+      models.Sale.find().lean(),
+      models.Medicine.find().lean(),
+      models.MedicineBatch.find().populate('supplier', 'name').lean(),
+      models.Purchase.find().lean(),
+      models.Supplier.find().lean()
+    ])
+
+    const todayStr = new Date().toISOString().slice(0, 10)
+    let totalSalesAmount = 0
+    let todaySalesAmount = 0
+    let totalSalesItems = 0
+    const dailySalesMap = {}
+    const monthlySalesMap = {}
+
+    for (const sale of sales) {
+      const amt = Number(String(sale.total || '').replace(/[^0-9.-]/g, '')) || 0
+      totalSalesAmount += amt
+      const sDate = sale.date || (sale.createdAt ? new Date(sale.createdAt).toISOString().slice(0, 10) : todayStr)
+      if (sDate === todayStr) {
+        todaySalesAmount += amt
+      }
+      totalSalesItems += Number(sale.items) || 0
+
+      if (!dailySalesMap[sDate]) {
+        dailySalesMap[sDate] = { date: sDate, total: 0, count: 0, items: 0 }
+      }
+      dailySalesMap[sDate].total += amt
+      dailySalesMap[sDate].count += 1
+      dailySalesMap[sDate].items += Number(sale.items) || 0
+
+      const monthStr = sDate.slice(0, 7)
+      if (!monthlySalesMap[monthStr]) {
+        monthlySalesMap[monthStr] = { month: monthStr, total: 0, count: 0, items: 0 }
+      }
+      monthlySalesMap[monthStr].total += amt
+      monthlySalesMap[monthStr].count += 1
+      monthlySalesMap[monthStr].items += Number(sale.items) || 0
+    }
+
+    const dailySales = Object.values(dailySalesMap).sort((a, b) => b.date.localeCompare(a.date))
+    const monthlySales = Object.values(monthlySalesMap).sort((a, b) => b.month.localeCompare(a.month))
+
+    let totalStockUnits = 0
+    let totalStockValue = 0
+    const now = new Date()
+    const nearExpiryDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+    const currentStock = []
+    const lowStockList = []
+    const expiredList = []
+    const nearExpiryList = []
+
+    for (const batch of batches) {
+      const med = medicines.find((item) => String(item._id) === String(batch.medicine))
+      const qty = Number(batch.quantity) || 0
+      const pPrice = Number(batch.purchasePrice) || 0
+      const sPrice = Number(batch.sellingPrice || batch.price) || 0
+      const minStock = batch.minimumStock !== undefined && batch.minimumStock !== null ? Number(batch.minimumStock) : 10
+      totalStockUnits += qty
+      totalStockValue += qty * pPrice
+
+      const row = {
+        medicineId: med?._id,
+        medicineName: med?.name || 'Unknown medicine',
+        genericName: med?.genericName || '',
+        category: med?.category || 'General',
+        batchNumber: batch.batchNumber,
+        quantity: qty,
+        minimumStock: minStock,
+        purchasePrice: pPrice,
+        sellingPrice: sPrice,
+        stockValue: qty * pPrice,
+        expiryDate: batch.expiryDate || '',
+        supplierName: batch.supplier?.name || '',
+        status: qty <= 0 ? 'Out of Stock' : qty <= minStock ? 'Low Stock' : 'In Stock'
+      }
+      currentStock.push(row)
+
+      if (qty <= minStock) {
+        lowStockList.push(row)
+      }
+
+      if (batch.expiryDate) {
+        const exp = new Date(batch.expiryDate)
+        if (!Number.isNaN(exp.getTime())) {
+          if (exp < now) {
+            expiredList.push(row)
+          } else if (exp <= nearExpiryDate) {
+            nearExpiryList.push(row)
+          }
+        }
+      }
+    }
+
+    let totalPurchasesAmount = 0
+    let totalPurchasesItems = 0
+    const supplierPurchasesMap = {}
+    const datePurchasesMap = {}
+
+    for (const purchase of purchases) {
+      const amt = getPurchaseAmount(purchase)
+      totalPurchasesAmount += amt
+      totalPurchasesItems += Number(purchase.items) || 0
+      const sName = purchase.supplier || 'Unknown Supplier'
+
+      if (!supplierPurchasesMap[sName]) {
+        supplierPurchasesMap[sName] = { supplier: sName, total: 0, count: 0, items: 0 }
+      }
+      supplierPurchasesMap[sName].total += amt
+      supplierPurchasesMap[sName].count += 1
+      supplierPurchasesMap[sName].items += Number(purchase.items) || 0
+
+      const pDate = purchase.date ? String(purchase.date).slice(0, 10) : todayStr
+      if (!datePurchasesMap[pDate]) {
+        datePurchasesMap[pDate] = { date: pDate, total: 0, count: 0, items: 0 }
+      }
+      datePurchasesMap[pDate].total += amt
+      datePurchasesMap[pDate].count += 1
+      datePurchasesMap[pDate].items += Number(purchase.items) || 0
+    }
+
+    const purchasesBySupplier = Object.values(supplierPurchasesMap).sort((a, b) => b.total - a.total)
+    const purchasesByDate = Object.values(datePurchasesMap).sort((a, b) => b.date.localeCompare(a.date))
+
+    res.json({
+      sales: {
+        totalAmount: totalSalesAmount,
+        todayAmount: todaySalesAmount,
+        totalTransactions: sales.length,
+        totalItemsSold: totalSalesItems,
+        dailySales,
+        monthlySales
+      },
+      inventory: {
+        totalMedicines: medicines.length,
+        totalBatches: batches.length,
+        totalStockUnits,
+        totalStockValue,
+        currentStock,
+        lowStockList,
+        expiredList,
+        nearExpiryList
+      },
+      purchases: {
+        totalAmount: totalPurchasesAmount,
+        totalOrders: purchases.length,
+        totalItemsPurchased: totalPurchasesItems,
+        purchasesBySupplier,
+        purchasesByDate
+      }
+    })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
 app.get('/api/reports', async (req, res) => {
   try {
-    const data = await models.Report.find()
+    const data = await models.Report.find().sort({ createdAt: -1 })
     res.json(data)
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.get('/api/reports/:id', async (req, res) => {
+  try {
+    const report = await models.Report.findById(req.params.id)
+    if (!report) return res.status(404).json({ error: 'Report not found' })
+    res.json(report)
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.post('/api/reports/generate', authenticateToken, requireWriteAccess, async (req, res) => {
+  try {
+    const { category, type, startDate, endDate, supplierId } = req.body
+    if (!type) return res.status(400).json({ error: 'Report type is required' })
+
+    const now = new Date()
+    const todayStr = now.toISOString().slice(0, 10)
+    let periodLabel = 'All Time'
+    let summary = ''
+    let totalAmount = 0
+    let itemCount = 0
+    let details = []
+
+    if (category === 'Sales') {
+      const sales = await models.Sale.find().lean()
+      let filtered = sales
+      if (type === 'Daily Sales') {
+        const targetDate = startDate || todayStr
+        periodLabel = targetDate
+        filtered = sales.filter((s) => (s.date || '').slice(0, 10) === targetDate)
+      } else if (type === 'Monthly Sales') {
+        const targetMonth = startDate ? startDate.slice(0, 7) : todayStr.slice(0, 7)
+        periodLabel = targetMonth
+        filtered = sales.filter((s) => (s.date || '').slice(0, 7) === targetMonth)
+      } else if (type === 'Sales by Date Range') {
+        periodLabel = `${startDate || 'Start'} to ${endDate || 'Today'}`
+        filtered = sales.filter((s) => {
+          const sDate = (s.date || '').slice(0, 10)
+          if (startDate && sDate < startDate) return false
+          if (endDate && sDate > endDate) return false
+          return true
+        })
+      }
+
+      details = filtered.map((s) => {
+        const amt = Number(String(s.total || '').replace(/[^0-9.-]/g, '')) || 0
+        totalAmount += amt
+        itemCount += Number(s.items) || 0
+        return {
+          reference: s.invoice,
+          date: s.date,
+          customer: s.customer,
+          payment: s.payment,
+          items: s.items,
+          amount: amt,
+          status: s.status
+        }
+      })
+      summary = `${filtered.length} sales recorded. Total revenue: Rs. ${totalAmount.toFixed(2)}.`
+    } else if (category === 'Inventory') {
+      const [medicines, batches] = await Promise.all([
+        models.Medicine.find().lean(),
+        models.MedicineBatch.find().populate('supplier', 'name').lean()
+      ])
+      const nearExpiryDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+
+      let rows = batches.map((batch) => {
+        const med = medicines.find((item) => String(item._id) === String(batch.medicine))
+        const qty = Number(batch.quantity) || 0
+        const pPrice = Number(batch.purchasePrice) || 0
+        const minStock = batch.minimumStock !== undefined && batch.minimumStock !== null ? Number(batch.minimumStock) : 10
+        return {
+          medicineName: med?.name || 'Unknown medicine',
+          genericName: med?.genericName || '',
+          category: med?.category || 'General',
+          batchNumber: batch.batchNumber,
+          quantity: qty,
+          minimumStock: minStock,
+          purchasePrice: pPrice,
+          sellingPrice: Number(batch.sellingPrice || batch.price) || 0,
+          stockValue: qty * pPrice,
+          expiryDate: batch.expiryDate || '',
+          supplierName: batch.supplier?.name || '',
+          isExpired: batch.expiryDate ? new Date(batch.expiryDate) < now : false,
+          isNearExpiry: batch.expiryDate ? (new Date(batch.expiryDate) >= now && new Date(batch.expiryDate) <= nearExpiryDate) : false
+        }
+      })
+
+      if (type === 'Low Stock Audit') {
+        periodLabel = 'Threshold Check'
+        rows = rows.filter((r) => r.quantity <= r.minimumStock)
+      } else if (type === 'Expired Medicines Audit') {
+        periodLabel = 'Expired Batches'
+        rows = rows.filter((r) => r.isExpired)
+      } else if (type === 'Near Expiry Audit') {
+        periodLabel = 'Next 30 Days'
+        rows = rows.filter((r) => r.isNearExpiry)
+      } else {
+        periodLabel = 'Full Stock Audit'
+      }
+
+      details = rows
+      for (const r of rows) {
+        totalAmount += r.stockValue
+        itemCount += r.quantity
+      }
+      summary = `${rows.length} batches evaluated. Total stock quantity: ${itemCount} units. Valuation: Rs. ${totalAmount.toFixed(2)}.`
+    } else if (category === 'Purchases') {
+      const purchases = await models.Purchase.find().lean()
+      let filtered = purchases
+
+      if (type === 'Purchases by Supplier') {
+        periodLabel = supplierId || 'All Suppliers'
+        if (supplierId) {
+          filtered = purchases.filter((p) => p.supplier === supplierId)
+        }
+      } else if (type === 'Purchases by Date Range') {
+        periodLabel = `${startDate || 'Start'} to ${endDate || 'Today'}`
+        filtered = purchases.filter((p) => {
+          const pDate = (p.date || '').slice(0, 10)
+          if (startDate && pDate < startDate) return false
+          if (endDate && pDate > endDate) return false
+          return true
+        })
+      } else {
+        periodLabel = 'All Purchases'
+      }
+
+      details = filtered.map((p) => {
+        const amt = getPurchaseAmount(p)
+        totalAmount += amt
+        itemCount += Number(p.items) || 0
+        return {
+          reference: p.reference,
+          date: p.date,
+          supplier: p.supplier,
+          items: p.items,
+          amount: amt,
+          status: p.status
+        }
+      })
+      summary = `${filtered.length} purchase orders recorded. Total purchase expense: Rs. ${totalAmount.toFixed(2)}.`
+    }
+
+    const report = await models.Report.create({
+      name: `${type} Report`,
+      category: category || 'General',
+      period: periodLabel,
+      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      author: req.user?.name || req.user?.email || 'Administrator',
+      format: 'PDF',
+      status: 'Ready',
+      summary,
+      totalAmount,
+      itemCount,
+      details
+    })
+
+    res.status(201).json(report)
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.delete('/api/reports/:id', authenticateToken, requireWriteAccess, async (req, res) => {
+  try {
+    const deleted = await models.Report.findByIdAndDelete(req.params.id)
+    if (!deleted) return res.status(404).json({ error: 'Report not found' })
+    res.json({ message: 'Report deleted successfully' })
   } catch (error) {
     res.status(500).json({ error: error.message })
   }
