@@ -67,7 +67,7 @@ function publicUser(user) {
   }
 }
 
-async function recordStockMovement({ medicine, batch, type, quantity, previous, balance, reference = '' }) {
+async function recordStockMovement({ medicine, batch, type, quantity, previous, balance, reference = '', user = null }) {
   await models.StockHistory.create({
     date: new Date().toISOString(),
     medicine: medicine?.name || String(medicine || ''),
@@ -76,7 +76,9 @@ async function recordStockMovement({ medicine, batch, type, quantity, previous, 
     quantity,
     previous,
     balance,
-    reference
+    reference,
+    performedById: user?.id && mongoose.isValidObjectId(user.id) ? user.id : null,
+    performedBy: user?.name || user?.email || 'System'
   })
 }
 
@@ -243,6 +245,11 @@ function getSaleAmount(sale) {
   return Number.isFinite(numericAmount) ? numericAmount : 0
 }
 
+function getRecordDate(record, fallback = new Date().toISOString().slice(0, 10)) {
+  const date = record.date || (record.createdAt ? new Date(record.createdAt).toISOString().slice(0, 10) : '')
+  return date ? String(date).slice(0, 10) : fallback
+}
+
 async function refreshSupplierBalances() {
   const suppliers = await models.Supplier.find()
   const purchases = await models.Purchase.find().lean()
@@ -297,7 +304,7 @@ app.post('/api/auth/login', async (req, res) => {
     await user.save()
 
     const token = jwt.sign(
-      { id: user._id, email: user.email, role: user.role, access: user.access },
+      { id: user._id, name: user.name, email: user.email, role: user.role, access: user.access },
       signingSecret,
       { expiresIn: '7d' }
     )
@@ -598,7 +605,7 @@ app.post('/api/medicines/:id/batches', authenticateToken, requireWriteAccess, as
       sellingPrice: Number(sellingPrice) || 0,
       location: location?.trim() || ''
     })
-    if (stock > 0) await recordStockMovement({ medicine, batch, type: 'Opening stock', quantity: stock, previous: 0, balance: stock, reference: 'Batch creation' })
+    if (stock > 0) await recordStockMovement({ medicine, batch, type: 'Opening stock', quantity: stock, previous: 0, balance: stock, reference: 'Batch creation', user: req.user })
     await refreshInventoryAndAlerts()
     res.status(201).json(batch)
   } catch (error) {
@@ -629,7 +636,7 @@ app.put('/api/batches/:id', authenticateToken, requireWriteAccess, async (req, r
     if (updates.quantity !== undefined && Number(updates.quantity) !== previous) {
       const medicine = await models.Medicine.findById(existing.medicine)
       const difference = Number(updates.quantity) - previous
-      await recordStockMovement({ medicine, batch, type: difference >= 0 ? 'Stock adjustment (+)' : 'Stock adjustment (-)', quantity: Math.abs(difference), previous, balance: batch.quantity, reference: 'Manual adjustment' })
+      await recordStockMovement({ medicine, batch, type: difference >= 0 ? 'Stock adjustment (+)' : 'Stock adjustment (-)', quantity: Math.abs(difference), previous, balance: batch.quantity, reference: 'Manual adjustment', user: req.user })
     }
     await refreshInventoryAndAlerts()
     res.json(batch)
@@ -644,7 +651,7 @@ app.delete('/api/batches/:id', authenticateToken, requireWriteAccess, async (req
     const batch = await models.MedicineBatch.findById(req.params.id)
     if (!batch) return res.status(404).json({ error: 'Batch not found' })
     const medicine = await models.Medicine.findById(batch.medicine)
-    await recordStockMovement({ medicine, batch, type: 'Stock removal', quantity: batch.quantity, previous: batch.quantity, balance: 0, reference: 'Batch deletion' })
+    await recordStockMovement({ medicine, batch, type: 'Stock removal', quantity: batch.quantity, previous: batch.quantity, balance: 0, reference: 'Batch deletion', user: req.user })
     await models.MedicineBatch.findByIdAndDelete(req.params.id)
     await refreshInventoryAndAlerts()
     res.json({ message: 'Batch deleted successfully' })
@@ -675,7 +682,8 @@ app.post('/api/stock-adjustments', authenticateToken, requireWriteAccess, async 
         quantity: Math.abs(next - previous),
         previous,
         balance: next,
-        reference
+        reference,
+        user: req.user
       })
     }
     await refreshInventoryAndAlerts()
@@ -799,7 +807,7 @@ app.post('/api/purchases', authenticateToken, requireWriteAccess, async (req, re
       batch.purchasePrice = purchasePrice
       await batch.save()
       const medicine = await models.Medicine.findById(batch.medicine)
-      await recordStockMovement({ medicine, batch, type: 'Purchase received', quantity, previous, balance: batch.quantity, reference: reference.trim() })
+      await recordStockMovement({ medicine, batch, type: 'Purchase received', quantity, previous, balance: batch.quantity, reference: reference.trim(), user: req.user })
       itemCount += quantity
       amount += quantity * purchasePrice
       storedLineItems.push({
@@ -867,7 +875,7 @@ app.post('/api/sales', authenticateToken, requireWriteAccess, async (req, res) =
       batch.quantity -= quantity
       await batch.save()
       const medicine = await models.Medicine.findById(batch.medicine)
-      await recordStockMovement({ medicine, batch, type: 'Sale', quantity, previous, balance: batch.quantity, reference: invoice.trim() })
+      await recordStockMovement({ medicine, batch, type: 'Sale', quantity, previous, balance: batch.quantity, reference: invoice.trim(), user: req.user })
       itemCount += quantity
       total += quantity * (line.sellingPrice !== undefined ? Math.max(0, Number(line.sellingPrice) || 0) : batch.sellingPrice)
     }
@@ -1049,7 +1057,7 @@ app.get('/api/reports/analytics', async (req, res) => {
     for (const sale of sales) {
       const amt = getSaleAmount(sale)
       totalSalesAmount += amt
-      const sDate = sale.date || (sale.createdAt ? new Date(sale.createdAt).toISOString().slice(0, 10) : todayStr)
+      const sDate = getRecordDate(sale, todayStr)
       if (sDate === todayStr) {
         todaySalesAmount += amt
       }
@@ -1143,7 +1151,7 @@ app.get('/api/reports/analytics', async (req, res) => {
       supplierPurchasesMap[sName].count += 1
       supplierPurchasesMap[sName].items += Number(purchase.items) || 0
 
-      const pDate = purchase.date ? String(purchase.date).slice(0, 10) : todayStr
+      const pDate = getRecordDate(purchase, todayStr)
       if (!datePurchasesMap[pDate]) {
         datePurchasesMap[pDate] = { date: pDate, total: 0, count: 0, items: 0 }
       }
@@ -1225,15 +1233,15 @@ app.post('/api/reports/generate', authenticateToken, requireWriteAccess, async (
       if (type === 'Daily Sales') {
         const targetDate = startDate || todayStr
         periodLabel = targetDate
-        filtered = sales.filter((s) => (s.date || '').slice(0, 10) === targetDate)
+        filtered = sales.filter((s) => getRecordDate(s, todayStr) === targetDate)
       } else if (type === 'Monthly Sales') {
         const targetMonth = startDate ? startDate.slice(0, 7) : todayStr.slice(0, 7)
         periodLabel = targetMonth
-        filtered = sales.filter((s) => (s.date || '').slice(0, 7) === targetMonth)
+        filtered = sales.filter((s) => getRecordDate(s, todayStr).slice(0, 7) === targetMonth)
       } else if (type === 'Sales by Date Range') {
         periodLabel = `${startDate || 'Start'} to ${endDate || 'Today'}`
         filtered = sales.filter((s) => {
-          const sDate = (s.date || '').slice(0, 10)
+          const sDate = getRecordDate(s, todayStr)
           if (startDate && sDate < startDate) return false
           if (endDate && sDate > endDate) return false
           return true
@@ -1246,7 +1254,7 @@ app.post('/api/reports/generate', authenticateToken, requireWriteAccess, async (
         itemCount += Number(s.items) || 0
         return {
           reference: s.invoice,
-          date: s.date,
+          date: getRecordDate(s, todayStr),
           customer: s.customer,
           payment: s.payment,
           items: s.items,
@@ -1310,12 +1318,15 @@ app.post('/api/reports/generate', authenticateToken, requireWriteAccess, async (
       if (type === 'Purchases by Supplier') {
         periodLabel = supplierId || 'All Suppliers'
         if (supplierId) {
-          filtered = purchases.filter((p) => p.supplier === supplierId)
+          filtered = purchases.filter((p) =>
+            (p.supplierId && String(p.supplierId) === String(supplierId)) ||
+            p.supplier === supplierId
+          )
         }
       } else if (type === 'Purchases by Date Range') {
         periodLabel = `${startDate || 'Start'} to ${endDate || 'Today'}`
         filtered = purchases.filter((p) => {
-          const pDate = (p.date || '').slice(0, 10)
+          const pDate = getRecordDate(p, todayStr)
           if (startDate && pDate < startDate) return false
           if (endDate && pDate > endDate) return false
           return true
@@ -1330,7 +1341,7 @@ app.post('/api/reports/generate', authenticateToken, requireWriteAccess, async (
         itemCount += Number(p.items) || 0
         return {
           reference: p.reference,
-          date: p.date,
+          date: getRecordDate(p, todayStr),
           supplier: p.supplier,
           items: p.items,
           amount: amt,

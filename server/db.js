@@ -155,7 +155,9 @@ const stockHistorySchema = new mongoose.Schema({
   quantity: { type: Number, default: 0 },
   previous: { type: Number, default: 0 },
   balance: { type: Number, default: 0 },
-  reference: { type: String, default: '' }
+  reference: { type: String, default: '' },
+  performedById: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  performedBy: { type: String, default: 'System' }
 }, { timestamps: true })
 
 const User = mongoose.models.User || mongoose.model('User', userSchema, 'users')

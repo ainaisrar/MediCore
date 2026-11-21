@@ -1996,7 +1996,7 @@ function StockHistory() {
   }, [])
   const normalizedQuery = query.trim().toLowerCase()
   const filteredHistory = stockHistory.filter((item) =>
-    [item.date, item.medicine, item.batch, item.type, item.quantity, item.previous, item.balance, item.reference]
+    [item.date, item.medicine, item.batch, item.type, item.quantity, item.previous, item.balance, item.reference, item.performedBy]
       .some((value) => String(value ?? '').toLowerCase().includes(normalizedQuery)),
   )
 
@@ -2017,9 +2017,9 @@ function StockHistory() {
         </div>
         <div className="history-table-wrap">
           <table className="medicine-table history-table">
-            <thead><tr><th>Date &amp; Time</th><th>Medicine</th><th>Batch</th><th>Type</th><th>Quantity</th><th>Previous</th><th>New Balance</th><th>Reference</th></tr></thead>
+            <thead><tr><th>Date &amp; Time</th><th>Medicine</th><th>Batch</th><th>Type</th><th>Quantity</th><th>Previous</th><th>New Balance</th><th>Reference</th><th>Performed By</th></tr></thead>
             <tbody>{filteredHistory.map((item) => <tr key={item._id || item.id || `${item.date}-${item.batch}-${item.type}`}>
-              <td>{item.date}</td><td><strong>{item.medicine}</strong></td><td>{item.batch}</td><td>{item.type}</td><td>{item.quantity}</td><td>{item.previous}</td><td>{item.balance}</td><td>{item.reference}</td>
+              <td>{item.date}</td><td><strong>{item.medicine}</strong></td><td>{item.batch}</td><td>{item.type}</td><td>{item.quantity}</td><td>{item.previous}</td><td>{item.balance}</td><td>{item.reference}</td><td>{item.performedBy || 'System'}</td>
             </tr>)}</tbody>
           </table>
           {loading && <div className="history-empty-space">Loading stock history...</div>}
