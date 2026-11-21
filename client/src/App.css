@@ -329,6 +329,15 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .customer-heading h2 { margin: 0 0 9px; font-size: 19px; letter-spacing: -.3px; }
 .customer-heading p { margin: 0; color: #788aa3; font-size: 15px; }
 .customer-toolbar { display: flex; gap: 13px; padding: 18px; border-bottom: 1px solid var(--line); }
+.customer-table-wrap { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.customer-table { min-width: 1100px; }
+.customer-history-modal { max-width: 850px; }
+.customer-history-summary { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 16px; }
+.customer-history-summary span { display: grid; gap: 5px; padding: 12px; border: 1px solid #e6ecf4; border-radius: 10px; }
+.customer-history-summary small { color: #788aa3; }
+.customer-history-table-wrap { max-width: 100%; overflow-x: auto; }
+.customer-history-table { min-width: 720px; }
+.customer-history-empty { padding: 30px; color: #8392a7; text-align: center; }
 .customer-table th, .customer-table td { padding-right: 23px; padding-left: 23px; }
 .customer-table th:nth-child(1), .customer-table td:nth-child(1) { width: 20%; }
 .customer-table th:nth-child(2), .customer-table td:nth-child(2) { width: 14%; }

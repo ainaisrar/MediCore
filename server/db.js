@@ -97,6 +97,7 @@ const purchaseSchema = new mongoose.Schema({
 const saleSchema = new mongoose.Schema({
   invoice: { type: String, required: true },
   customer: { type: String, default: 'Walk-in Customer' },
+  customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', default: null },
   date: { type: String, default: '' },
   items: { type: Number, default: 0 },
   payment: { type: String, default: 'Cash' },
@@ -109,6 +110,7 @@ const customerSchema = new mongoose.Schema({
   name: { type: String, required: true },
   phone: { type: String, default: '' },
   email: { type: String, default: '' },
+  walkIn: { type: Boolean, default: false },
   prescriptions: { type: Number, default: 0 },
   orders: { type: Number, default: 0 },
   balance: { type: String, default: '$0.00' },

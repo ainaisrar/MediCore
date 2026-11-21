@@ -764,6 +764,7 @@ function SalesBilling({ canEdit }) {
   const [query, setQuery] = useState('')
   const [sales, setSales] = useState([])
   const [batches, setBatches] = useState([])
+  const [customers, setCustomers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [cart, setCart] = useState([])
@@ -772,16 +773,20 @@ function SalesBilling({ canEdit }) {
   const load = async () => {
     setLoading(true)
     try {
-      const [salesResponse, medicineResponse] = await Promise.all([
+      const [salesResponse, medicineResponse, customerResponse] = await Promise.all([
         fetch(`${API_BASE}/api/sales`),
-        fetch(`${API_BASE}/api/medicines`)
+        fetch(`${API_BASE}/api/medicines`),
+        fetch(`${API_BASE}/api/customers`)
       ])
       const salesData = await readApiResponse(salesResponse)
       const medicineData = await readApiResponse(medicineResponse)
+      const customerData = await readApiResponse(customerResponse)
       if (!salesResponse.ok) throw new Error(salesData.error || 'Unable to load sales history')
       if (!medicineResponse.ok) throw new Error(medicineData.error || 'Unable to load medicines')
+      if (!customerResponse.ok) throw new Error(customerData.error || 'Unable to load customers')
       setSales(salesData)
       setBatches(medicineData.flatMap((medicine) => (medicine.batches || []).map((batch) => ({ ...batch, medicineName: medicine.brandName || medicine.name }))))
+      setCustomers(customerData.filter((customer) => !customer.walkIn))
     } catch (err) { setError(err.message) } finally { setLoading(false) }
   }
   useEffect(() => { load() }, [])
@@ -860,7 +865,7 @@ function SalesBilling({ canEdit }) {
             {!cart.length && <div className="pos-bill-empty">Add medicines to start a new bill.</div>}
           </div>
           <div className="pos-bill-summary">
-            <label><span>Customer</span><input value={form.customer} onChange={(event) => setForm({ ...form, customer: event.target.value })} /></label>
+            <label><span>Customer</span><select value={form.customer} onChange={(event) => setForm({ ...form, customer: event.target.value })}><option>Walk-in Customer</option>{customers.map((customer) => <option key={customer._id} value={customer.name}>{customer.name}</option>)}</select></label>
             <label><span>Payment</span><select value={form.payment} onChange={(event) => setForm({ ...form, payment: event.target.value })}><option>Cash</option><option>Card</option><option>Bank transfer</option></select></label>
             <div className="pos-total-row"><span>Subtotal</span><span>Rs. {subtotal.toLocaleString()}</span></div>
             <div className="pos-total-row"><span>Discount</span><span>Rs. 0</span></div>
@@ -893,9 +898,53 @@ function SalesBilling({ canEdit }) {
   )
 }
 
-function CustomerDirectory() {
+function CustomerDirectory({ canEdit }) {
   const [query, setQuery] = useState('')
-  const customers = []
+  const [customers, setCustomers] = useState([])
+  const [modal, setModal] = useState(null)
+  const [form, setForm] = useState({})
+  const [selectedCustomer, setSelectedCustomer] = useState(null)
+  const [error, setError] = useState('')
+
+  const load = async () => {
+    try {
+      const customerResponse = await fetch(`${API_BASE}/api/customers`)
+      const customerData = await readApiResponse(customerResponse)
+      if (!customerResponse.ok) throw new Error(customerData.error || 'Unable to load customers')
+      setCustomers(customerData)
+    } catch (err) { setError(err.message) }
+  }
+  useEffect(() => { load() }, [])
+
+  const openCustomer = (customer = {}, mode = 'create') => {
+    setError('')
+    setForm({ name: '', phone: '', email: '', status: 'Active', ...customer })
+    setModal(mode)
+  }
+  const save = async (event) => {
+    event.preventDefault()
+    setError('')
+    try {
+      const response = await authenticatedFetch(`${API_BASE}/api/customers${form._id ? `/${form._id}` : ''}`, {
+        method: form._id ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form)
+      })
+      const data = await readApiResponse(response)
+      if (!response.ok) throw new Error(data.error || 'Unable to save customer')
+      setModal(null)
+      await load()
+    } catch (err) { setError(err.message) }
+  }
+  const remove = async (customer) => {
+    if (!window.confirm(`Delete ${customer.name}? Previous invoices will remain as walk-in sales.`)) return
+    try {
+      const response = await authenticatedFetch(`${API_BASE}/api/customers/${customer._id}`, { method: 'DELETE' })
+      const data = await readApiResponse(response)
+      if (!response.ok) throw new Error(data.error || 'Unable to delete customer')
+      await load()
+    } catch (err) { setError(err.message) }
+  }
   const filteredCustomers = customers.filter((customer) =>
     Object.values(customer).some((value) => String(value).toLowerCase().includes(query.toLowerCase())),
   )
@@ -908,18 +957,26 @@ function CustomerDirectory() {
             <h2>Customer directory</h2>
             <p>Manage customer profiles, contact details, and prescription history.</p>
           </div>
-          <button className="primary-button"><Icon name="users" size={19} /> Add customer</button>
+          <button className="primary-button" type="button" disabled={!canEdit} onClick={() => openCustomer()}><Icon name="users" size={19} /> Add customer</button>
         </div>
         <div className="customer-toolbar">
           <label className="catalog-search"><Icon name="search" size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search customer directory..." aria-label="Search customer directory" /></label>
           <button className="catalog-button"><Icon name="filter" size={19} /> Filters</button>
-          <button className="catalog-button"><Icon name="download" size={18} /> Export</button>
+          <button className="catalog-button" type="button" onClick={() => {
+            const rows = [['Customer', 'Phone', 'Email', 'Orders', 'Status'], ...filteredCustomers.map((customer) => [customer.name, customer.phone, customer.email, customer.orders, customer.status])]
+            const csv = rows.map((row) => row.map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\n')
+            const link = document.createElement('a')
+            link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+            link.download = 'customers.csv'
+            link.click()
+            URL.revokeObjectURL(link.href)
+          }}><Icon name="download" size={18} /> Export</button>
         </div>
         <div className="customer-table-wrap">
           <table className="medicine-table customer-table">
-            <thead><tr><th>Customer</th><th>Phone</th><th>Email</th><th>Prescriptions</th><th>Total Orders</th><th>Balance</th><th>Status</th></tr></thead>
-            <tbody>{filteredCustomers.map((customer) => <tr key={customer.id || customer.phone || customer.name}>
-              <td><strong>{customer.name}</strong></td><td>{customer.phone}</td><td>{customer.email}</td><td>{customer.prescriptions}</td><td>{customer.orders}</td><td>{customer.balance}</td><td>{customer.status}</td>
+            <thead><tr><th>Customer</th><th>Phone</th><th>Email</th><th>Total Orders</th><th>Balance</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody>{filteredCustomers.map((customer) => <tr key={customer._id || customer.phone || customer.name}>
+              <td><strong>{customer.name}</strong></td><td>{customer.phone || '-'}</td><td>{customer.email || '-'}</td><td>{customer.orders || 0}</td><td>{customer.balance || 'Rs. 0.00'}</td><td>{customer.status}</td><td className="table-actions"><button type="button" onClick={() => { setSelectedCustomer(customer); setModal('history') }}>View history</button>{!customer.walkIn && <><button type="button" disabled={!canEdit} onClick={() => openCustomer(customer, 'edit')}>Edit</button><button type="button" disabled={!canEdit} onClick={() => remove(customer)}>Delete</button></>}</td>
             </tr>)}</tbody>
           </table>
           {filteredCustomers.length === 0 && <div className="customer-empty-space" aria-label="No customer records" />}
@@ -929,6 +986,35 @@ function CustomerDirectory() {
           <div className="pagination"><button disabled>Previous</button><button className="current-page">1</button><button disabled>Next</button></div>
         </div>
       </section>
+      {(modal === 'create' || modal === 'edit') && <div className="modal-backdrop" onClick={() => setModal(null)}>
+        <form className="modal-card" onSubmit={save} onClick={(event) => event.stopPropagation()}>
+          <div className="modal-header"><div><h3>{modal === 'edit' ? 'Edit customer' : 'Add customer'}</h3><p>Store name, phone, and optional email.</p></div><button className="modal-close" type="button" onClick={() => setModal(null)}><Icon name="close" size={18} /></button></div>
+          <div className="modal-body medicine-form">
+            <label className="settings-field"><span>Customer name</span><input required value={form.name || ''} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
+            <label className="settings-field"><span>Phone number</span><input required value={form.phone || ''} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></label>
+            <label className="settings-field"><span>Email (optional)</span><input type="email" value={form.email || ''} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
+            <label className="settings-field"><span>Status</span><select value={form.status || 'Active'} onChange={(event) => setForm({ ...form, status: event.target.value })}><option>Active</option><option>Inactive</option></select></label>
+            {error && <div className="login-error-message">{error}</div>}
+          </div>
+          <div className="modal-footer"><button className="secondary-button" type="button" onClick={() => setModal(null)}>Cancel</button><button className="primary-button" type="submit">Save customer</button></div>
+        </form>
+      </div>}
+      {modal === 'history' && selectedCustomer && <div className="modal-backdrop" onClick={() => setModal(null)}>
+        <section className="modal-card customer-history-modal" onClick={(event) => event.stopPropagation()}>
+          <div className="modal-header"><div><h3>Purchase history</h3><p>{selectedCustomer.name} · {selectedCustomer.phone || 'No phone number'}</p></div><button className="modal-close" type="button" onClick={() => setModal(null)}><Icon name="close" size={18} /></button></div>
+          <div className="modal-body">
+            <div className="customer-history-summary"><span><small>Total orders</small><strong>{selectedCustomer.orders || 0}</strong></span><span><small>Email</small><strong>{selectedCustomer.email || '-'}</strong></span></div>
+            <div className="customer-history-table-wrap">
+              <table className="medicine-table customer-history-table">
+                <thead><tr><th>Invoice</th><th>Date</th><th>Items</th><th>Payment</th><th>Total</th><th>Status</th></tr></thead>
+                <tbody>{(selectedCustomer.purchaseHistory || []).map((sale) => <tr key={sale._id || sale.invoice}><td><strong>{sale.invoice}</strong></td><td>{sale.date}</td><td>{sale.items}</td><td>{sale.payment}</td><td>{sale.total}</td><td>{sale.status}</td></tr>)}</tbody>
+              </table>
+              {(selectedCustomer.purchaseHistory || []).length === 0 && <div className="customer-history-empty">No previous invoices.</div>}
+            </div>
+          </div>
+          <div className="modal-footer"><button className="secondary-button" type="button" onClick={() => setModal(null)}>Close</button></div>
+        </section>
+      </div>}
     </div>
   )
 }
@@ -2500,7 +2586,7 @@ function App() {
           </div>
         )}
 
-        {activePage === 'Medicines' ? <MedicineCatalog canEdit={canEdit} /> : activePage === 'Inventory' ? <InventoryStock canEdit={canEdit} /> : activePage === 'Suppliers' ? <SupplierDirectory canEdit={canEdit} /> : activePage === 'Purchases' ? <PurchaseOrders canEdit={canEdit} /> : activePage === 'Sales & Billing' ? <SalesBilling canEdit={canEdit} /> : activePage === 'Customers' ? <CustomerDirectory /> : activePage === 'Stock History' ? <StockHistory /> : activePage === 'Alerts' ? <Alerts notificationsEnabled={notificationsEnabled} onToggleNotifications={() => setNotificationsEnabled((prev) => !prev)} showSidebarCount={showSidebarCount} onToggleSidebarCount={() => setShowSidebarCount((prev) => !prev)} /> : activePage === 'Reports' ? <ReportsDirectory canEdit={canEdit} /> : activePage === 'User Management' ? (isAdministrator ? <UserManagement /> : <div className="content"><div className="welcome-row"><p>Access restricted. Administrator access required.</p></div></div>) : <DashboardOverview onNavigate={setActivePage} />}
+        {activePage === 'Medicines' ? <MedicineCatalog canEdit={canEdit} /> : activePage === 'Inventory' ? <InventoryStock canEdit={canEdit} /> : activePage === 'Suppliers' ? <SupplierDirectory canEdit={canEdit} /> : activePage === 'Purchases' ? <PurchaseOrders canEdit={canEdit} /> : activePage === 'Sales & Billing' ? <SalesBilling canEdit={canEdit} /> : activePage === 'Customers' ? <CustomerDirectory canEdit={canEdit} /> : activePage === 'Stock History' ? <StockHistory /> : activePage === 'Alerts' ? <Alerts notificationsEnabled={notificationsEnabled} onToggleNotifications={() => setNotificationsEnabled((prev) => !prev)} showSidebarCount={showSidebarCount} onToggleSidebarCount={() => setShowSidebarCount((prev) => !prev)} /> : activePage === 'Reports' ? <ReportsDirectory canEdit={canEdit} /> : activePage === 'User Management' ? (isAdministrator ? <UserManagement /> : <div className="content"><div className="welcome-row"><p>Access restricted. Administrator access required.</p></div></div>) : <DashboardOverview onNavigate={setActivePage} />}
       </main>
     </div>
   )

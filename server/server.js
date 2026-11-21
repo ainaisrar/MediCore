@@ -758,6 +758,9 @@ app.post('/api/sales', authenticateToken, requireWriteAccess, async (req, res) =
     const { invoice, customer, date, payment, status, lineItems = [] } = req.body
     if (!invoice?.trim()) return res.status(400).json({ error: 'Invoice number is required' })
     if (!Array.isArray(lineItems) || lineItems.length === 0) return res.status(400).json({ error: 'Add at least one sale item' })
+    if (await models.Sale.exists({ invoice: invoice.trim() })) {
+      return res.status(409).json({ error: 'An invoice with this number already exists' })
+    }
 
     let itemCount = 0
     let total = 0
@@ -779,9 +782,29 @@ app.post('/api/sales', authenticateToken, requireWriteAccess, async (req, res) =
       itemCount += quantity
       total += quantity * (line.sellingPrice !== undefined ? Math.max(0, Number(line.sellingPrice) || 0) : batch.sellingPrice)
     }
+    const customerName = customer?.trim() || 'Walk-in Customer'
+    let customerRecord = null
+    if (customerName !== 'Walk-in Customer') {
+      customerRecord = await models.Customer.findOne({ name: customerName })
+      if (!customerRecord) {
+        customerRecord = await models.Customer.create({ name: customerName, status: 'Active' })
+      }
+    } else {
+      customerRecord = await models.Customer.findOne({ walkIn: true })
+      if (!customerRecord) {
+        customerRecord = await models.Customer.create({
+          name: 'Walk-in Customer',
+          phone: '',
+          email: '',
+          walkIn: true,
+          status: 'Active'
+        })
+      }
+    }
     const sale = await models.Sale.create({
       invoice: invoice.trim(),
-      customer: customer?.trim() || 'Walk-in Customer',
+      customer: customerName,
+      customerId: customerRecord._id,
       date: date || new Date().toISOString().slice(0, 10),
       items: itemCount,
       payment: payment || 'Cash',
@@ -789,6 +812,8 @@ app.post('/api/sales', authenticateToken, requireWriteAccess, async (req, res) =
       status: status || 'Completed',
       lineItems
     })
+    customerRecord.orders = (Number(customerRecord.orders) || 0) + 1
+    await customerRecord.save()
     await refreshInventoryAndAlerts()
     res.status(201).json(sale)
   } catch (error) {
@@ -798,8 +823,87 @@ app.post('/api/sales', authenticateToken, requireWriteAccess, async (req, res) =
 
 app.get('/api/customers', async (req, res) => {
   try {
-    const data = await models.Customer.find()
+    const customers = await models.Customer.find().sort({ name: 1 }).lean()
+    const sales = await models.Sale.find().sort({ createdAt: -1 }).lean()
+    const data = customers.map((customer) => {
+      const history = sales.filter((sale) =>
+        (sale.customerId && String(sale.customerId) === String(customer._id)) ||
+        sale.customer === customer.name
+      )
+      return {
+        ...customer,
+        orders: history.length,
+        purchaseHistory: history
+      }
+    })
     res.json(data)
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.post('/api/customers', authenticateToken, requireWriteAccess, async (req, res) => {
+  try {
+    const { name, phone, email, status } = req.body
+    if (!name?.trim()) return res.status(400).json({ error: 'Customer name is required' })
+    if (!phone?.trim()) return res.status(400).json({ error: 'Customer phone number is required' })
+    if (await models.Customer.exists({ name: name.trim(), walkIn: false })) {
+      return res.status(409).json({ error: 'A customer with this name already exists' })
+    }
+    const customer = await models.Customer.create({
+      name: name.trim(),
+      phone: phone.trim(),
+      email: email?.trim().toLowerCase() || '',
+      walkIn: false,
+      status: status || 'Active'
+    })
+    res.status(201).json(customer)
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.put('/api/customers/:id', authenticateToken, requireWriteAccess, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid customer ID' })
+    const customer = await models.Customer.findById(req.params.id)
+    if (!customer) return res.status(404).json({ error: 'Customer not found' })
+    if (customer.walkIn) return res.status(400).json({ error: 'The walk-in customer profile cannot be edited' })
+    const allowed = ['name', 'phone', 'email', 'status']
+    const updates = Object.fromEntries(Object.entries(req.body).filter(([key]) => allowed.includes(key)))
+    if (updates.name !== undefined) {
+      if (!String(updates.name).trim()) return res.status(400).json({ error: 'Customer name is required' })
+      updates.name = String(updates.name).trim()
+    }
+    if (updates.phone !== undefined) {
+      if (!String(updates.phone).trim()) return res.status(400).json({ error: 'Customer phone number is required' })
+      updates.phone = String(updates.phone).trim()
+    }
+    if (updates.email !== undefined) updates.email = String(updates.email).trim().toLowerCase()
+    const oldName = customer.name
+    Object.assign(customer, updates)
+    await customer.save()
+    if (updates.name !== undefined && updates.name !== oldName) {
+      await models.Sale.updateMany(
+        { $or: [{ customerId: customer._id }, { customer: oldName }] },
+        { $set: { customer: customer.name } }
+      )
+    }
+    res.json(customer)
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.delete('/api/customers/:id', authenticateToken, requireWriteAccess, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid customer ID' })
+    const customer = await models.Customer.findById(req.params.id)
+    if (!customer) return res.status(404).json({ error: 'Customer not found' })
+    if (customer.walkIn) return res.status(400).json({ error: 'The walk-in customer profile cannot be deleted' })
+    await models.Customer.findByIdAndDelete(req.params.id)
+    await models.Sale.updateMany({ customerId: customer._id }, { $set: { customerId: null, customer: 'Walk-in Customer' } })
+    res.json({ message: 'Customer deleted successfully' })
   } catch (error) {
     res.status(500).json({ error: error.message })
   }
