@@ -24,6 +24,7 @@ const userSchema = new mongoose.Schema({
     defaultPaymentMethod: { type: String, default: 'Cash' },
     isDarkTheme: { type: Boolean, default: false },
     notificationsEnabled: { type: Boolean, default: true },
+    emailAlertsEnabled: { type: Boolean, default: true },
     showSidebarCount: { type: Boolean, default: true }
   }
 }, { timestamps: true })
@@ -67,6 +68,7 @@ const inventorySchema = new mongoose.Schema({
   reserved: { type: Number, default: 0 },
   minimum: { type: Number, default: 0 },
   status: { type: String, default: 'Normal' },
+  expiryStatus: { type: String, default: 'Valid' },
   location: { type: String, default: '' },
   expiry: { type: String, default: '' }
 }, { timestamps: true })
@@ -102,6 +104,7 @@ const saleSchema = new mongoose.Schema({
   items: { type: Number, default: 0 },
   payment: { type: String, default: 'Cash' },
   total: { type: String, default: '$0.00' },
+  totalAmount: { type: Number, default: 0, min: 0 },
   lineItems: { type: Array, default: [] },
   status: { type: String, default: 'Completed' }
 }, { timestamps: true })
@@ -121,10 +124,13 @@ const alertSchema = new mongoose.Schema({
   alert: { type: String, required: true },
   medicine: { type: String, required: true },
   batch: { type: String, default: '' },
+  alertKey: { type: String, default: '' },
   stock: { type: Number, default: 0 },
   threshold: { type: Number, default: 0 },
   expiry: { type: String, default: '' },
-  severity: { type: String, default: 'Warning' }
+  severity: { type: String, default: 'Warning' },
+  emailSent: { type: Boolean, default: false },
+  emailSentAt: { type: Date, default: null }
 }, { timestamps: true })
 
 const reportSchema = new mongoose.Schema({
@@ -203,6 +209,7 @@ async function connectDB() {
         defaultPaymentMethod: 'Cash',
         isDarkTheme: false,
         notificationsEnabled: true,
+        emailAlertsEnabled: true,
         showSidebarCount: true
       }
     })

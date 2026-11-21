@@ -4,6 +4,7 @@ const dotenv = require('dotenv')
 const mongoose = require('mongoose')
 const jwt = require('jsonwebtoken')
 const bcrypt = require('bcryptjs')
+const nodemailer = require('nodemailer')
 const { connectDB, models } = require('./db')
 
 dotenv.config()
@@ -87,6 +88,57 @@ function isExpired(expiryDate) {
   return !Number.isNaN(expiry.getTime()) && expiry < new Date()
 }
 
+function getExpiryStatus(expiryDate) {
+  if (!expiryDate) return 'Valid'
+  const expiry = /^\d{4}-\d{2}-\d{2}$/.test(expiryDate)
+    ? new Date(`${expiryDate}T23:59:59.999`)
+    : new Date(expiryDate)
+  if (Number.isNaN(expiry.getTime())) return 'Valid'
+  if (expiry < new Date()) return 'Expired'
+  if (expiry <= new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)) return 'Near expiry'
+  return 'Valid'
+}
+
+async function sendAlertEmails(alertDocs) {
+  if (!alertDocs.length) return
+  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) return
+
+  const users = await models.User.find({
+    status: 'Active',
+    email: { $regex: '@', $options: 'i' }
+  }).lean()
+  const recipients = users
+    .filter((user) => user.settings?.notificationsEnabled !== false && user.settings?.emailAlertsEnabled !== false)
+    .map((user) => user.email)
+  if (!recipients.length) return
+
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT) || 587,
+    secure: String(process.env.SMTP_SECURE).toLowerCase() === 'true',
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS
+    }
+  })
+  const lines = alertDocs.map((alert) =>
+    `${alert.severity}: ${alert.alert} - ${alert.medicine}${alert.batch ? ` (${alert.batch})` : ''}${alert.expiry ? `, expiry ${alert.expiry}` : ''}`
+  )
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM || process.env.SMTP_USER,
+    to: recipients.join(','),
+    subject: `MediCore Inventory Alert (${alertDocs.length})`,
+    text: `MediCore inventory alerts:\n\n${lines.join('\n')}`,
+    html: `<h2>MediCore Inventory Alerts</h2><ul>${alertDocs.map((alert) =>
+      `<li><strong>${alert.severity}:</strong> ${alert.alert} - ${alert.medicine}${alert.batch ? ` (${alert.batch})` : ''}${alert.expiry ? `, expiry ${alert.expiry}` : ''}</li>`
+    ).join('')}</ul>`
+  })
+  await models.Alert.updateMany(
+    { _id: { $in: alertDocs.map((alert) => alert._id) } },
+    { $set: { emailSent: true, emailSentAt: new Date() } }
+  )
+}
+
 async function refreshInventoryAndAlerts() {
   const medicines = await models.Medicine.find().lean()
   const batches = await models.MedicineBatch.find().populate('supplier', 'name').lean()
@@ -105,15 +157,13 @@ async function refreshInventoryAndAlerts() {
         minimum,
         status: available <= 0 ? 'Out of Stock' : available <= minimum ? 'Low Stock' : 'Normal',
         location: batch.location || '',
-        expiry: batch.expiryDate || ''
+        expiry: batch.expiryDate || '',
+        expiryStatus: getExpiryStatus(batch.expiryDate)
       }
     }))
   }
 
-  await models.Alert.deleteMany({})
   const alerts = []
-  const now = new Date()
-  const nearExpiry = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
   for (const batch of batches) {
     const medicine = medicines.find((item) => String(item._id) === String(batch.medicine))
     const available = Number(batch.quantity) || 0
@@ -130,27 +180,66 @@ async function refreshInventoryAndAlerts() {
       })
     }
     if (batch.expiryDate) {
-      const expiry = new Date(batch.expiryDate)
-      if (!Number.isNaN(expiry.getTime()) && expiry <= nearExpiry) {
+      const expiryStatus = getExpiryStatus(batch.expiryDate)
+      if (expiryStatus === 'Expired' || expiryStatus === 'Near expiry') {
         alerts.push({
-          alert: expiry < now ? 'Expired' : 'Near expiry',
+          alert: expiryStatus,
           medicine: medicine?.name || 'Unknown medicine',
           batch: batch.batchNumber,
           stock: available,
           threshold: minimum,
           expiry: batch.expiryDate,
-          severity: expiry < now ? 'Critical' : 'Warning'
+          severity: expiryStatus === 'Expired' ? 'Critical' : 'Warning'
         })
       }
     }
   }
-  if (alerts.length) await models.Alert.insertMany(alerts)
+  const activeKeys = []
+  const newlyCreated = []
+  for (const alert of alerts) {
+    const alertKey = `${alert.alert}|${alert.medicine}|${alert.batch}|${alert.expiry}|${alert.threshold}`
+    activeKeys.push(alertKey)
+    const existing = await models.Alert.findOne({ alertKey }).lean()
+    if (!existing) {
+      const created = await models.Alert.create({ ...alert, alertKey, emailSent: false })
+      newlyCreated.push(created)
+    } else if (
+      existing.stock !== alert.stock ||
+      existing.severity !== alert.severity ||
+      existing.threshold !== alert.threshold
+    ) {
+      await models.Alert.findByIdAndUpdate(existing._id, {
+        ...alert,
+        alertKey,
+        emailSent: false,
+        emailSentAt: null
+      })
+      newlyCreated.push(await models.Alert.findById(existing._id))
+    }
+  }
+  await models.Alert.deleteMany({ alertKey: { $nin: activeKeys } })
+  if (newlyCreated.length) {
+    try {
+      await sendAlertEmails(newlyCreated)
+    } catch (error) {
+      console.error('Failed to send inventory alert email:', error.message)
+    }
+  }
 }
 
 function getPurchaseAmount(purchase) {
   const numericTotal = Number(purchase.totalAmount)
   if (Number.isFinite(numericTotal) && numericTotal > 0) return numericTotal
-  const numericAmount = Number(String(purchase.amount || '').replace(/[^0-9.-]/g, ''))
+  const match = String(purchase.amount || '').match(/(\d+(?:\.\d+)?)/)
+  const numericAmount = match ? Number(match[1]) : 0
+  return Number.isFinite(numericAmount) ? numericAmount : 0
+}
+
+function getSaleAmount(sale) {
+  const numericTotal = Number(sale.totalAmount)
+  if (Number.isFinite(numericTotal) && numericTotal > 0) return numericTotal
+  const match = String(sale.total || '').match(/(\d+(?:\.\d+)?)/)
+  const numericAmount = match ? Number(match[1]) : 0
   return Number.isFinite(numericAmount) ? numericAmount : 0
 }
 
@@ -809,6 +898,7 @@ app.post('/api/sales', authenticateToken, requireWriteAccess, async (req, res) =
       items: itemCount,
       payment: payment || 'Cash',
       total: `Rs. ${total.toFixed(2)}`,
+      totalAmount: total,
       status: status || 'Completed',
       lineItems
     })
@@ -919,6 +1009,21 @@ app.get('/api/alerts', async (req, res) => {
   }
 })
 
+app.post('/api/alerts/test-email', authenticateToken, requireWriteAccess, async (req, res) => {
+  try {
+    await refreshInventoryAndAlerts()
+    const unsent = await models.Alert.find({ emailSent: false }).limit(50)
+    if (!unsent.length) return res.json({ message: 'No pending inventory alerts to email' })
+    if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
+      return res.status(400).json({ error: 'SMTP settings are not configured on the server' })
+    }
+    await sendAlertEmails(unsent)
+    res.json({ message: `Email alert sent for ${unsent.length} pending alert(s)` })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
 app.get('/api/reports/analytics', async (req, res) => {
   try {
     const [sales, medicines, batches, purchases, suppliers] = await Promise.all([
@@ -928,6 +1033,11 @@ app.get('/api/reports/analytics', async (req, res) => {
       models.Purchase.find().lean(),
       models.Supplier.find().lean()
     ])
+    for (const sale of sales) {
+      if (!Number(sale.totalAmount)) {
+        await models.Sale.updateOne({ _id: sale._id }, { $set: { totalAmount: getSaleAmount(sale) } })
+      }
+    }
 
     const todayStr = new Date().toISOString().slice(0, 10)
     let totalSalesAmount = 0
@@ -937,7 +1047,7 @@ app.get('/api/reports/analytics', async (req, res) => {
     const monthlySalesMap = {}
 
     for (const sale of sales) {
-      const amt = Number(String(sale.total || '').replace(/[^0-9.-]/g, '')) || 0
+      const amt = getSaleAmount(sale)
       totalSalesAmount += amt
       const sDate = sale.date || (sale.createdAt ? new Date(sale.createdAt).toISOString().slice(0, 10) : todayStr)
       if (sDate === todayStr) {
@@ -1131,7 +1241,7 @@ app.post('/api/reports/generate', authenticateToken, requireWriteAccess, async (
       }
 
       details = filtered.map((s) => {
-        const amt = Number(String(s.total || '').replace(/[^0-9.-]/g, '')) || 0
+        const amt = getSaleAmount(s)
         totalAmount += amt
         itemCount += Number(s.items) || 0
         return {

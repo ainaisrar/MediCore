@@ -167,7 +167,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .dashboard-batch-list strong { color: var(--ink); font-size: 14px; }
 .dashboard-batch-list span { color: #8190a7; font-size: 12px; }
 .primary-grid, .secondary-grid { display: grid; grid-template-columns: 1.55fr 1fr; gap: 25px; margin-top: 26px; }
-.secondary-grid { grid-template-columns: 1fr 1fr; }
+.secondary-grid { grid-template-columns: repeat(3, 1fr); }
 .panel { min-width: 0; border: 1px solid #e3eaf3; border-radius: 18px; background: #fff; box-shadow: 0 2px 4px rgba(29, 61, 102, .035); }
 .sales-panel, .alerts-panel { min-height: 385px; padding: 25px 22px 20px; }
 .panel-header { display: flex; align-items: flex-start; justify-content: space-between; }

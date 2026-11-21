@@ -235,29 +235,64 @@ function MetricCard({ icon, label, tone, value, detail }) {
 
 function DashboardOverview({ onNavigate }) {
   const [medicines, setMedicines] = useState([])
+  const [dashboardAlerts, setDashboardAlerts] = useState([])
+  const [analytics, setAnalytics] = useState(null)
+  const [recentSales, setRecentSales] = useState([])
+  const [recentPurchases, setRecentPurchases] = useState([])
+  const [recentStock, setRecentStock] = useState([])
   const [loading, setLoading] = useState(true)
-  const [now] = useState(() => Date.now())
+
+  const loadDashboard = () => {
+    Promise.all([
+      fetch(`${API_BASE}/api/medicines`).then(async (response) => ({ response, data: await readApiResponse(response) })),
+      fetch(`${API_BASE}/api/alerts`).then(async (response) => ({ response, data: await readApiResponse(response) })),
+      fetch(`${API_BASE}/api/reports/analytics`).then(async (response) => ({ response, data: await readApiResponse(response) })),
+      fetch(`${API_BASE}/api/sales`).then(async (response) => ({ response, data: await readApiResponse(response) })),
+      fetch(`${API_BASE}/api/purchases`).then(async (response) => ({ response, data: await readApiResponse(response) })),
+      fetch(`${API_BASE}/api/stock-history`).then(async (response) => ({ response, data: await readApiResponse(response) }))
+    ])
+      .then(([medicineResult, alertResult, analyticsResult, salesResult, purchasesResult, stockResult]) => {
+        if (!medicineResult.response.ok) throw new Error(medicineResult.data.error || 'Unable to load dashboard inventory')
+        if (!alertResult.response.ok) throw new Error(alertResult.data.error || 'Unable to load dashboard alerts')
+        setMedicines(medicineResult.data)
+        setDashboardAlerts(alertResult.data)
+        if (analyticsResult.response.ok) setAnalytics(analyticsResult.data)
+        if (salesResult.response.ok) setRecentSales(salesResult.data.slice(0, 5))
+        if (purchasesResult.response.ok) setRecentPurchases(purchasesResult.data.slice(0, 5))
+        if (stockResult.response.ok) setRecentStock(stockResult.data.slice(0, 5))
+      })
+      .catch(() => {
+        setMedicines([])
+        setDashboardAlerts([])
+        setAnalytics(null)
+        setRecentSales([])
+        setRecentPurchases([])
+        setRecentStock([])
+      })
+      .finally(() => setLoading(false))
+  }
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/medicines`)
-      .then((response) => readApiResponse(response).then((data) => {
-        if (!response.ok) throw new Error(data.error || 'Unable to load dashboard inventory')
-        setMedicines(data)
-      }))
-      .catch(() => setMedicines([]))
-      .finally(() => setLoading(false))
+    loadDashboard()
+    const refreshTimer = window.setInterval(loadDashboard, 30000)
+    const handleDataUpdated = () => loadDashboard()
+    window.addEventListener('medicore:data-updated', handleDataUpdated)
+    return () => {
+      window.clearInterval(refreshTimer)
+      window.removeEventListener('medicore:data-updated', handleDataUpdated)
+    }
   }, [])
 
   const batches = medicines.flatMap((medicine) => medicine.batches || [])
   const availableStock = batches.reduce((total, batch) => total + (Number(batch.quantity) || 0), 0)
-  const lowStock = batches.filter((batch) => {
-    const quantity = Number(batch.quantity) || 0
-    const minimum = batch.minimumStock !== undefined && batch.minimumStock !== null ? (Number(batch.minimumStock) || 0) : 10
-    return quantity <= minimum
-  }).length
-  const expiredOrExpiring = batches.filter((batch) => batch.expiryDate && new Date(batch.expiryDate) <= new Date(now + 30 * 24 * 60 * 60 * 1000)).length
+  const lowStock = dashboardAlerts.filter((item) => item.alert === 'Low stock' || item.alert === 'Out of stock').length
+  const nearExpiry = dashboardAlerts.filter((item) => item.alert === 'Near expiry').length
+  const expired = dashboardAlerts.filter((item) => item.alert === 'Expired').length
+  const expiredOrExpiring = nearExpiry + expired
   const inStockRate = batches.length ? Math.round((batches.filter((batch) => Number(batch.quantity) > 0).length / batches.length) * 100) : 0
   const value = (number) => loading ? '...' : number.toLocaleString()
+  const todaySales = analytics?.sales?.todayAmount || 0
+  const totalSales = analytics?.sales?.totalAmount || 0
 
   return <div className="content">
     <div className="welcome-row">
@@ -267,8 +302,12 @@ function DashboardOverview({ onNavigate }) {
     <section className="metrics-grid" aria-label="Pharmacy summary">
       <MetricCard icon="pill" label="Total medicines" tone="blue" value={value(medicines.length)} detail={`${batches.length.toLocaleString()} batches`} />
       <MetricCard icon="cube" label="Available stock" tone="green" value={value(availableStock)} detail="Units across batches" />
-      <MetricCard icon="report" label="In-stock batches" tone="purple" value={loading ? '...' : `${inStockRate}%`} detail={`${batches.filter((batch) => Number(batch.quantity) > 0).length} active batches`} />
-      <MetricCard icon="bell" label="Needs attention" tone="orange" value={value(lowStock + expiredOrExpiring)} detail={`${lowStock} low stock · ${expiredOrExpiring} expiring`} />
+      <MetricCard icon="report" label="Today's sales" tone="purple" value={loading ? '...' : `Rs. ${todaySales.toLocaleString()}`} detail="Sales recorded today" />
+      <MetricCard icon="cart" label="Total sales" tone="green" value={loading ? '...' : `Rs. ${totalSales.toLocaleString()}`} detail={`${analytics?.sales?.totalTransactions || 0} transactions`} />
+      <MetricCard icon="bell" label="Low-stock medicines" tone="orange" value={value(lowStock)} detail="Batches at minimum stock" />
+      <MetricCard icon="close" label="Expired medicines" tone="orange" value={value(expired)} detail="Expired batches" />
+      <MetricCard icon="history" label="Near-expiry medicines" tone="purple" value={value(nearExpiry)} detail="Expiring within 30 days" />
+      <MetricCard icon="cube" label="In-stock batches" tone="blue" value={loading ? '...' : `${inStockRate}%`} detail={`${batches.filter((batch) => Number(batch.quantity) > 0).length} active batches`} />
     </section>
     <section className="primary-grid">
       <article className="panel sales-panel">
@@ -277,12 +316,13 @@ function DashboardOverview({ onNavigate }) {
       </article>
       <article className="panel alerts-panel">
         <div className="panel-header"><div><h2>Inventory alerts</h2><p>Items requiring action</p></div><a href="#medicines" onClick={(event) => { event.preventDefault(); onNavigate('Medicines') }}>View medicines <Icon name="arrow" size={16} /></a></div>
-        {loading ? <div className="alert-empty">Loading alerts...</div> : lowStock + expiredOrExpiring === 0 ? <div className="alert-empty"><div className="empty-state-icon"><Icon name="bell" size={23} /></div><strong>No alerts</strong><span>All medicine batches are healthy.</span></div> : <div className="dashboard-alert-list"><span><Icon name="warning" size={17} /> {lowStock} low-stock batch{lowStock === 1 ? '' : 'es'}</span><span><Icon name="warning" size={17} /> {expiredOrExpiring} expiring within 30 days</span></div>}
+        {loading ? <div className="alert-empty">Loading alerts...</div> : lowStock + expiredOrExpiring === 0 ? <div className="alert-empty"><div className="empty-state-icon"><Icon name="bell" size={23} /></div><strong>No alerts</strong><span>All medicine batches are healthy.</span></div> : <div className="dashboard-alert-list"><span><Icon name="warning" size={17} /> {lowStock} low/out-of-stock batch{lowStock === 1 ? '' : 'es'}</span><span><Icon name="warning" size={17} /> {nearExpiry} near-expiry batch{nearExpiry === 1 ? '' : 'es'}</span><span><Icon name="warning" size={17} /> {expired} expired batch{expired === 1 ? '' : 'es'}</span></div>}
       </article>
     </section>
     <section className="secondary-grid">
-      <article className="panel activity-panel"><div className="panel-header"><div><h2>Recent batches</h2><p>Latest batch records</p></div><a href="#medicines" onClick={(event) => { event.preventDefault(); onNavigate('Medicines') }}>View all <Icon name="arrow" size={16} /></a></div>{batches.length ? <div className="dashboard-batch-list">{batches.slice(0, 5).map((batch) => <div key={batch._id}><strong>{batch.batchNumber}</strong><span>{batch.quantity} units · {batch.expiryDate || 'No expiry date'}</span></div>)}</div> : <EmptyRows type="stock" />}</article>
-      <article className="panel activity-panel"><div className="panel-header"><div><h2>Catalog summary</h2><p>Medicine records by category</p></div><a href="#medicines" onClick={(event) => { event.preventDefault(); onNavigate('Medicines') }}>View catalog <Icon name="arrow" size={16} /></a></div>{medicines.length ? <div className="dashboard-batch-list">{[...new Set(medicines.map((medicine) => medicine.category || 'Uncategorized'))].slice(0, 5).map((item) => <div key={item}><strong>{item}</strong><span>{medicines.filter((medicine) => (medicine.category || 'Uncategorized') === item).length} medicines</span></div>)}</div> : <EmptyRows type="stock" />}</article>
+      <article className="panel activity-panel"><div className="panel-header"><div><h2>Recent sales</h2><p>Latest invoices</p></div><a href="#sales" onClick={(event) => { event.preventDefault(); onNavigate('Sales & Billing') }}>View all <Icon name="arrow" size={16} /></a></div>{recentSales.length ? <div className="dashboard-batch-list">{recentSales.map((sale) => <div key={sale._id}><strong>{sale.invoice}</strong><span>{sale.customer} · {sale.total}</span></div>)}</div> : <EmptyRows type="sales" />}</article>
+      <article className="panel activity-panel"><div className="panel-header"><div><h2>Recent purchases</h2><p>Latest supplier receipts</p></div><a href="#purchases" onClick={(event) => { event.preventDefault(); onNavigate('Purchases') }}>View all <Icon name="arrow" size={16} /></a></div>{recentPurchases.length ? <div className="dashboard-batch-list">{recentPurchases.map((purchase) => <div key={purchase._id}><strong>{purchase.reference}</strong><span>{purchase.supplier} · {purchase.amount}</span></div>)}</div> : <EmptyRows type="stock" />}</article>
+      <article className="panel activity-panel"><div className="panel-header"><div><h2>Recent stock activities</h2><p>Latest inventory movements</p></div><a href="#stock-history" onClick={(event) => { event.preventDefault(); onNavigate('Stock History') }}>View all <Icon name="arrow" size={16} /></a></div>{recentStock.length ? <div className="dashboard-batch-list">{recentStock.map((activity) => <div key={activity._id}><strong>{activity.medicine}</strong><span>{activity.type} · {activity.quantity} units · {activity.batch}</span></div>)}</div> : <EmptyRows type="stock" />}</article>
     </section>
   </div>
 }
@@ -440,6 +480,7 @@ function MedicineCatalog({ canEdit }) {
 
 function InventoryStock({ canEdit }) {
   const [query, setQuery] = useState('')
+  const [expiryFilter, setExpiryFilter] = useState('All')
   const [inventory, setInventory] = useState([])
   const [batches, setBatches] = useState([])
   const [loading, setLoading] = useState(true)
@@ -477,22 +518,28 @@ function InventoryStock({ canEdit }) {
       if (!response.ok) throw new Error(data.error || 'Unable to adjust stock')
       setModal(false)
       await load()
+      window.dispatchEvent(new Event('medicore:data-updated'))
     } catch (err) {
       setError(err.message)
     }
   }
 
   const exportCsv = () => {
-    const rows = [['Medicine', 'Batch', 'Available', 'Reserved', 'Minimum', 'Status', 'Location', 'Expiry'], ...filteredInventory.map((item) => [item.name, item.batch, item.available, item.reserved, item.minimum, item.status, item.location, item.expiry])]
+    const rows = [['Medicine', 'Batch', 'Available', 'Reserved', 'Minimum', 'Status', 'Location', 'Expiry', 'Expiry status'], ...filteredInventory.map((item) => [item.name, item.batch, item.available, item.reserved, item.minimum, item.status, item.location, item.expiry, item.expiryStatus])]
     const csv = rows.map((row) => row.map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\n')
     const link = document.createElement('a')
     link.href = `data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`
     link.download = 'inventory.csv'
     link.click()
   }
-  const filteredInventory = inventory.filter((item) =>
-    Object.values(item).some((value) => String(value).toLowerCase().includes(query.toLowerCase())),
-  )
+  const filteredInventory = inventory.filter((item) => {
+    const matchesQuery = Object.values(item).some((value) => String(value).toLowerCase().includes(query.toLowerCase()))
+    const matchesExpiry = expiryFilter === 'All' ||
+      (expiryFilter === 'Expired' && item.expiryStatus === 'Expired') ||
+      (expiryFilter === 'Near expiry' && item.expiryStatus === 'Near expiry') ||
+      (expiryFilter === 'Valid' && item.expiryStatus === 'Valid')
+    return matchesQuery && matchesExpiry
+  })
 
   return (
     <div className="inventory-content">
@@ -506,13 +553,14 @@ function InventoryStock({ canEdit }) {
         </div>
         <div className="inventory-toolbar">
           <label className="catalog-search"><Icon name="search" size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search current inventory..." aria-label="Search current inventory" /></label>
+          <select className="category-filter" value={expiryFilter} onChange={(event) => setExpiryFilter(event.target.value)} aria-label="Filter by expiry status"><option>All</option><option>Expired</option><option>Near expiry</option><option>Valid</option></select>
           <button className="catalog-button" type="button" onClick={exportCsv}><Icon name="download" size={18} /> Export</button>
         </div>
         <div className="inventory-table-wrap">
           <table className="medicine-table inventory-table">
-            <thead><tr><th>Item</th><th>Batch</th><th>Available</th><th>Reserved</th><th>Minimum</th><th>Status</th><th>Location</th></tr></thead>
+            <thead><tr><th>Item</th><th>Batch</th><th>Available</th><th>Reserved</th><th>Minimum</th><th>Status</th><th>Expiry</th><th>Expiry status</th><th>Location</th></tr></thead>
             <tbody>{filteredInventory.map((item) => <tr key={item.batch}>
-              <td><strong>{item.name}</strong></td><td>{item.batch}</td><td>{item.available}</td><td>{item.reserved}</td><td>{item.minimum}</td><td>{item.status}</td><td>{item.location}</td>
+              <td><strong>{item.name}</strong></td><td>{item.batch}</td><td>{item.available}</td><td>{item.reserved}</td><td>{item.minimum}</td><td>{item.status}</td><td>{item.expiry || '-'}</td><td>{item.expiryStatus || 'Valid'}</td><td>{item.location}</td>
             </tr>)}</tbody>
           </table>
           {loading && <div className="inventory-empty-space">Loading inventory...</div>}
@@ -575,6 +623,7 @@ function SupplierDirectory({ canEdit }) {
       if (!response.ok) throw new Error(data.error || 'Unable to save supplier')
       setModal(null)
       await load()
+      window.dispatchEvent(new Event('medicore:data-updated'))
     } catch (err) { setError(err.message) }
   }
   const remove = async (supplier) => {
@@ -679,6 +728,7 @@ function PurchaseOrders({ canEdit }) {
       if (!response.ok) throw new Error(data.error || 'Unable to record purchase')
       setModal(null)
       await load()
+      window.dispatchEvent(new Event('medicore:data-updated'))
     } catch (err) { setError(err.message) }
   }
   const filteredPurchases = purchases.filter((purchase) => {
@@ -834,6 +884,7 @@ function SalesBilling({ canEdit }) {
       setCart([])
       setForm({ invoice: `INV-${Date.now().toString().slice(-6)}`, customer: 'Walk-in Customer', date: new Date().toISOString().slice(0, 10), payment: 'Cash' })
       await load()
+      window.dispatchEvent(new Event('medicore:data-updated'))
     } catch (err) { setError(err.message) }
   }
   const availableBatches = batches.filter((batch) => !isExpiredDate(batch.expiryDate) && `${batch.medicineName} ${batch.batchNumber}`.toLowerCase().includes(query.toLowerCase()))
@@ -1983,8 +2034,10 @@ function StockHistory() {
   )
 }
 
-function Alerts({ notificationsEnabled, onToggleNotifications, showSidebarCount, onToggleSidebarCount }) {
+function Alerts({ notificationsEnabled, onToggleNotifications, showSidebarCount, onToggleSidebarCount, emailAlertsEnabled, onToggleEmailAlerts }) {
   const [query, setQuery] = useState('')
+  const [alertFilter, setAlertFilter] = useState('All')
+  const [emailMessage, setEmailMessage] = useState('')
   const [isConfigOpen, setIsConfigOpen] = useState(false)
   const [alerts, setAlerts] = useState([])
   const [loading, setLoading] = useState(true)
@@ -2000,9 +2053,14 @@ function Alerts({ notificationsEnabled, onToggleNotifications, showSidebarCount,
   const lowStockCount = alerts.filter((item) => item.alert !== 'Near expiry' && item.alert !== 'Expired').length
   const nearExpiryCount = alerts.filter((item) => item.alert === 'Near expiry').length
   const expiredCount = alerts.filter((item) => item.alert === 'Expired').length
-  const filteredAlerts = alerts.filter((item) =>
-    Object.values(item).some((value) => String(value).toLowerCase().includes(query.toLowerCase())),
-  )
+  const filteredAlerts = alerts.filter((item) => {
+    const matchesQuery = Object.values(item).some((value) => String(value).toLowerCase().includes(query.toLowerCase()))
+    const matchesFilter = alertFilter === 'All' ||
+      (alertFilter === 'Low stock' && ['Low stock', 'Out of stock'].includes(item.alert)) ||
+      (alertFilter === 'Near expiry' && item.alert === 'Near expiry') ||
+      (alertFilter === 'Expired' && item.alert === 'Expired')
+    return matchesQuery && matchesFilter
+  })
 
   return (
     <div className="alerts-content">
@@ -2032,9 +2090,27 @@ function Alerts({ notificationsEnabled, onToggleNotifications, showSidebarCount,
         </div>
         <div className="alerts-toolbar">
           <label className="catalog-search"><Icon name="search" size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search inventory alerts..." aria-label="Search inventory alerts" /></label>
-          <button className="catalog-button"><Icon name="filter" size={19} /> Filters</button>
-          <button className="catalog-button"><Icon name="download" size={18} /> Export</button>
+          <select className="category-filter" value={alertFilter} onChange={(event) => setAlertFilter(event.target.value)} aria-label="Filter alert type"><option>All</option><option>Low stock</option><option>Near expiry</option><option>Expired</option></select>
+          <button className="catalog-button" type="button" onClick={async () => {
+            setEmailMessage('')
+            try {
+              const response = await authenticatedFetch(`${API_BASE}/api/alerts/test-email`, { method: 'POST' })
+              const data = await readApiResponse(response)
+              if (!response.ok) throw new Error(data.error || 'Unable to send test email')
+              setEmailMessage(data.message)
+            } catch (err) { setEmailMessage(err.message) }
+          }}><Icon name="mail" size={18} /> Email alerts</button>
+          <button className="catalog-button" type="button" onClick={() => {
+            const rows = [['Alert', 'Medicine', 'Batch', 'Stock', 'Threshold', 'Expiry', 'Severity'], ...filteredAlerts.map((item) => [item.alert, item.medicine, item.batch, item.stock, item.threshold, item.expiry, item.severity])]
+            const csv = rows.map((row) => row.map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\n')
+            const link = document.createElement('a')
+            link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+            link.download = 'inventory-alerts.csv'
+            link.click()
+            URL.revokeObjectURL(link.href)
+          }}><Icon name="download" size={18} /> Export</button>
         </div>
+        {emailMessage && <div className="catalog-error">{emailMessage}</div>}
         <div className="alerts-table-wrap">
           <table className="medicine-table alerts-table">
             <thead><tr><th>Alert</th><th>Medicine</th><th>Batch</th><th>Current Stock</th><th>Threshold</th><th>Expiry</th><th>Severity</th></tr></thead>
@@ -2074,6 +2150,18 @@ function Alerts({ notificationsEnabled, onToggleNotifications, showSidebarCount,
                   className="toggle-switch"
                   checked={notificationsEnabled}
                   onChange={onToggleNotifications}
+                />
+              </label>
+              <label className="toggle-row">
+                <div className="toggle-text">
+                  <strong>Email alerts</strong>
+                  <span>Send stock and expiry alerts to your account email</span>
+                </div>
+                <input
+                  type="checkbox"
+                  className="toggle-switch"
+                  checked={emailAlertsEnabled}
+                  onChange={onToggleEmailAlerts}
                 />
               </label>
               <label className="toggle-row">
@@ -2235,6 +2323,7 @@ function App() {
   const [currentUser, setCurrentUser] = useState(null)
   const [activePage, setActivePage] = useState('Dashboard')
   const [notificationsEnabled, setNotificationsEnabled] = useState(true)
+  const [emailAlertsEnabled, setEmailAlertsEnabled] = useState(true)
   const [showSidebarCount, setShowSidebarCount] = useState(true)
   const [alertCount, setAlertCount] = useState(0)
   const [currentDate] = useState(() => new Date())
@@ -2269,6 +2358,7 @@ function App() {
       if (user.settings.defaultPaymentMethod) setPaymentMethod(user.settings.defaultPaymentMethod)
       if (user.settings.isDarkTheme !== undefined) setIsDarkTheme(user.settings.isDarkTheme)
       if (user.settings.notificationsEnabled !== undefined) setNotificationsEnabled(user.settings.notificationsEnabled)
+      if (user.settings.emailAlertsEnabled !== undefined) setEmailAlertsEnabled(user.settings.emailAlertsEnabled)
       if (user.settings.showSidebarCount !== undefined) setShowSidebarCount(user.settings.showSidebarCount)
     }
   }
@@ -2385,6 +2475,7 @@ function App() {
         defaultPaymentMethod: paymentMethod,
         isDarkTheme,
         notificationsEnabled,
+        emailAlertsEnabled,
         showSidebarCount
       }
 
@@ -2586,7 +2677,7 @@ function App() {
           </div>
         )}
 
-        {activePage === 'Medicines' ? <MedicineCatalog canEdit={canEdit} /> : activePage === 'Inventory' ? <InventoryStock canEdit={canEdit} /> : activePage === 'Suppliers' ? <SupplierDirectory canEdit={canEdit} /> : activePage === 'Purchases' ? <PurchaseOrders canEdit={canEdit} /> : activePage === 'Sales & Billing' ? <SalesBilling canEdit={canEdit} /> : activePage === 'Customers' ? <CustomerDirectory canEdit={canEdit} /> : activePage === 'Stock History' ? <StockHistory /> : activePage === 'Alerts' ? <Alerts notificationsEnabled={notificationsEnabled} onToggleNotifications={() => setNotificationsEnabled((prev) => !prev)} showSidebarCount={showSidebarCount} onToggleSidebarCount={() => setShowSidebarCount((prev) => !prev)} /> : activePage === 'Reports' ? <ReportsDirectory canEdit={canEdit} /> : activePage === 'User Management' ? (isAdministrator ? <UserManagement /> : <div className="content"><div className="welcome-row"><p>Access restricted. Administrator access required.</p></div></div>) : <DashboardOverview onNavigate={setActivePage} />}
+        {activePage === 'Medicines' ? <MedicineCatalog canEdit={canEdit} /> : activePage === 'Inventory' ? <InventoryStock canEdit={canEdit} /> : activePage === 'Suppliers' ? <SupplierDirectory canEdit={canEdit} /> : activePage === 'Purchases' ? <PurchaseOrders canEdit={canEdit} /> : activePage === 'Sales & Billing' ? <SalesBilling canEdit={canEdit} /> : activePage === 'Customers' ? <CustomerDirectory canEdit={canEdit} /> : activePage === 'Stock History' ? <StockHistory /> : activePage === 'Alerts' ? <Alerts notificationsEnabled={notificationsEnabled} onToggleNotifications={() => setNotificationsEnabled((prev) => !prev)} showSidebarCount={showSidebarCount} onToggleSidebarCount={() => setShowSidebarCount((prev) => !prev)} emailAlertsEnabled={emailAlertsEnabled} onToggleEmailAlerts={() => setEmailAlertsEnabled((prev) => !prev)} /> : activePage === 'Reports' ? <ReportsDirectory canEdit={canEdit} /> : activePage === 'User Management' ? (isAdministrator ? <UserManagement /> : <div className="content"><div className="welcome-row"><p>Access restricted. Administrator access required.</p></div></div>) : <DashboardOverview onNavigate={setActivePage} />}
       </main>
     </div>
   )
